@@ -34,6 +34,7 @@ void effects_init(void);  // [Performance] Effects: the game's particles are not
 bool hpscale_village_from_hub(uint32_t quest);  // a Village quest started from the Hub or the Pub (hpscale.c)
 void villagehub_init(void);  // Village quests at the Hub / Pub counter (runtime/hle/villagehub.c)
 void rewardbox_init(void);  // the quest rewards screen: sending the rewards to the item box faster (runtime/hle/rewardbox.c)
+void supplybox_init(void);  // [Supply Box] NoWait: an item taken from the supply box goes to the pouch at once (runtime/hle/supplybox.c)
 struct Cpu;
 void villagehub_tick(struct Cpu *c);  // game thread, each frame (uScheduler's update, tools/gen.py 0xb66164): drops the Village text bundle on leaving the Hub / Pub
 void urgentcredit_init(void);  // Urgent quests count for all who clear them (runtime/hle/urgentcredit.c)

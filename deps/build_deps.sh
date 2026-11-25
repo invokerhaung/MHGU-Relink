@@ -31,20 +31,36 @@ if [[ $what == all || $what == sdl ]] && [ ! -f "$OUT/sdl3/.built" ]; then
   "$CMAKE" -S "$(m "$SRC/SDL3-3.4.18")" -B "$(m "$OUT/sdl3/build")" "${COMMON[@]}" \
     -DCMAKE_INSTALL_PREFIX="$(m "$OUT/sdl3")" -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST_LIBRARY=OFF \
     -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384 > "$OUT/sdl3.configure.log" 2>&1 || { tail -30 "$OUT/sdl3.configure.log"; exit 1; }
-  "$CMAKE" --build "$(m "$OUT/sdl3/build")" --target install --parallel 12 > "$OUT/sdl3.build.log" 2>&1 || { tail -30 "$OUT/sdl3.build.log"; exit 1; }
+  "$CMAKE" --build "$(m "$OUT/sdl3/build")" --target install --parallel ${JOBS:-3} > "$OUT/sdl3.build.log" 2>&1 || { tail -30 "$OUT/sdl3.build.log"; exit 1; }
   touch "$OUT/sdl3/.built"
 fi
 
 if [[ $what == all || $what == shaderc ]] && [ ! -f "$OUT/shaderc/.built-$NDK_TAG" ]; then
   echo "== shaderc"
+  # 低内存编译（这台机器内存紧张时）：-fno-integrated-cc1 把前端拆成独立进程（崩溃点就在 -cc1 前端），
+  # -O1 降低优化器的内存峰值。shaderc 只是着色器翻译工具（构建期用），对运行时性能无影响。
+  # 如需最快构建可 SHADERC_LOWMEM=0 关掉。
+  SHADERC_FLAGS=""
+  [ "${SHADERC_LOWMEM:-1}" = "1" ] && SHADERC_FLAGS="-O1 -fno-integrated-cc1"
+  # val/validate_*.cpp 是超大翻译单元，clang 18 在 -O3/-O1 下内存爆掉会在 -cc1 前端崩溃。
+  # 给它们单独降到 -O0（幂等打补丁；deps/src 被重解压后可自动重打）。SPIRV-Tools 仅构建期用于着色器翻译，
+  # -O0 对游戏运行时无任何影响。用 SHADERC_LOWMEM=0 可跳过。
+  if [ "${SHADERC_LOWMEM:-1}" = "1" ]; then
+    SVCM="$SRC/SPIRV-Tools-vulkan-sdk-1.4.363.0/source/CMakeLists.txt"
+    if [ -f "$SVCM" ] && ! grep -q "MHGU val sources -O0" "$SVCM"; then
+      echo "  [patch] SPIRV-Tools val/validate*.cpp -> -O0 (low RAM)"
+      sed -i 's|^spvtools_pch(SPIRV_SOURCES pch_source)$|spvtools_pch(SPIRV_SOURCES pch_source)\n\n# MHGU val sources -O0: huge val/validate_*.cpp TUs crash clang 18 frontend on low RAM.\nfile(GLOB _mhgu_val_sources ${CMAKE_CURRENT_SOURCE_DIR}/val/validate*.cpp)\nset_source_files_properties(${_mhgu_val_sources} PROPERTIES COMPILE_FLAGS "-O0")|' "$SVCM"
+    fi
+  fi
   "$CMAKE" -S "$(m "$SHADERC_SRC")" -B "$(m "$SHADERC_BUILD")" "${COMMON[@]}" \
+    ${SHADERC_FLAGS:+-DCMAKE_CXX_FLAGS="$SHADERC_FLAGS"} \
     -DANDROID_STL=c++_static -DSHADERC_SKIP_TESTS=ON -DSHADERC_SKIP_EXAMPLES=ON -DSHADERC_SKIP_COPYRIGHT_CHECK=ON \
     -DSHADERC_SPIRV_TOOLS_DIR="$(m "$SRC/SPIRV-Tools-vulkan-sdk-1.4.363.0")" \
     -DSHADERC_SPIRV_HEADERS_DIR="$(m "$SRC/SPIRV-Headers-vulkan-sdk-1.4.363.0")" \
     -DSHADERC_GLSLANG_DIR="$(m "$SRC/glslang-16.6.0")" \
     -DSPIRV_SKIP_EXECUTABLES=ON -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF -DSPIRV_TOOLS_BUILD_STATIC=ON \
     -DENABLE_GLSLANG_BINARIES=OFF -DGLSLANG_TESTS=OFF > "$OUT/shaderc.configure.log" 2>&1 || { tail -30 "$OUT/shaderc.configure.log"; exit 1; }
-  "$CMAKE" --build "$(m "$SHADERC_BUILD")" --target shaderc_combined --parallel 12 > "$OUT/shaderc.build.log" 2>&1 || { tail -30 "$OUT/shaderc.build.log"; exit 1; }
+  "$CMAKE" --build "$(m "$SHADERC_BUILD")" --target shaderc_combined --parallel ${JOBS:-3} > "$OUT/shaderc.build.log" 2>&1 || { tail -30 "$OUT/shaderc.build.log"; exit 1; }
   mkdir -p "$OUT/shaderc/lib" "$OUT/shaderc/include"
   cp "$SHADERC_BUILD/libshaderc/libshaderc_combined.a" "$OUT/shaderc/lib/"
   cp -r "$SHADERC_SRC/libshaderc/include/shaderc" "$OUT/shaderc/include/"
@@ -72,7 +88,7 @@ if [[ $what == all || $what == opus ]] && [ ! -f "$OUT/opus/.built" ]; then
     -DBUILD_TESTING=OFF -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF \
     -DOPUS_INSTALL_CMAKE_CONFIG_MODULE=OFF > "$OUT/opus.configure.log" 2>&1 \
     || { tail -30 "$OUT/opus.configure.log"; exit 1; }
-  "$CMAKE" --build "$(m "$OUT/opus/build")" --target install --parallel 12 > "$OUT/opus.build.log" 2>&1 \
+  "$CMAKE" --build "$(m "$OUT/opus/build")" --target install --parallel ${JOBS:-3} > "$OUT/opus.build.log" 2>&1 \
     || { tail -30 "$OUT/opus.build.log"; exit 1; }
   touch "$OUT/opus/.built"
 fi

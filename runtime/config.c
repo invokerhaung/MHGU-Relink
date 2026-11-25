@@ -128,6 +128,8 @@
     .touch_hud = 1,                                                                                 \
     .touch_auto_r = 0,                                                                              \
     .touch_floating = 0,                                                                            \
+    .touch_hold_hide = 0,                                                                           \
+    .touch_cam_right = 0,                                                                           \
     .touch_camera = 1.0f,                                                                           \
     .touch_opacity = 0.8f,                                                                          \
     .touch_vibration = 1,                                                                           \
@@ -167,6 +169,9 @@
     .village_in_hub = 1,                                                                            \
     /* [Quest Rewards] */                                                                           \
     .quest_hold_send = 1,                                                                           \
+    .quest_send_all = 0,                                                                            \
+    .supply_wait = 0,                                                                               \
+    .damage_numbers = 0,                                                                            \
     /* [Discord] */                                                                                 \
     .discord = 1,                                                                                   \
     .discord_hunter = 1,                                                                            \
@@ -541,6 +546,14 @@ static const char DEFAULT_INI[] =
     "; Default: Off\n"
     "FloatingStick = Off\n"
     "\n"
+    "; Hold a finger where no control is to hide the controls, and again to show them\n"
+    "; Default: Off\n"
+    "HoldToHide = Off\n"
+    "\n"
+    "; A drag on the screen's left half turns no camera (only the right half does)\n"
+    "; Default: Off\n"
+    "CameraRightHalf = Off\n"
+    "\n"
     "; Which virtual buttons are shown in the universal layout, in quests and menus\n"
     "ShowAttacks = On\n"
     "ShowDodge = On\n"
@@ -773,6 +786,20 @@ static const char DEFAULT_INI[] =
     "; At the end of a quest, press and hold A on the Reward Box (Send to the Item Box option) to rapidly send items one-by-one, similar to World/Rise/Wilds.\n"
     "; Default: On\n"
     "HoldASend = On\n"
+    "\n"
+    "; At the end of a quest, one button sends every reward at once instead of holding A to send them one by one.\n"
+    "; Default: Off\n"
+    "SendAll = Off\n"
+    "\n"
+    "[Supply Box]\n"
+    "; An item taken from the supply box goes to your pouch at once, with no wait for the game's animation.\n"
+    "; Default: Off\n"
+    "NoWait = Off\n"
+    "\n"
+    "[Hunting Aids]\n"
+    "; Show the damage of each hit as a number over the monster, which rises and fades.\n"
+    "; Default: Off\n"
+    "DamageNumbers = Off\n"
     "\n"
     "[Discord]\n"
     "; Show what you're doing in the game on your Discord profile (Discord must be running on this computer):\n"
@@ -1106,6 +1133,8 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "MoveHUD", touch_hud, false),
     ON_OFF("Touch", "AutoR", touch_auto_r, false),
     ON_OFF("Touch", "FloatingStick", touch_floating, false),
+    ON_OFF("Touch", "HoldToHide", touch_hold_hide, false),
+    ON_OFF("Touch", "CameraRightHalf", touch_cam_right, false),
     ON_OFF("Touch", "ShowAttacks", touch_show[TB_ATTACKS], false),
     ON_OFF("Touch", "ShowDodge", touch_show[TB_DODGE], false),
     ON_OFF("Touch", "ShowGuard", touch_show[TB_GUARD], false),
@@ -1183,6 +1212,9 @@ const ConfigSetting g_settings[] = {
     {"Monster HP", "4Players|4Player", SET_FACTOR, F(hp.scale[3]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
     ON_OFF("Village Quests", "VillageQuestsInHub", village_in_hub, false),
     ON_OFF("Quest Rewards", "HoldASend", quest_hold_send, false),
+    ON_OFF("Quest Rewards", "SendAll", quest_send_all, false),
+    ON_OFF("Supply Box", "NoWait", supply_wait, false),
+    ON_OFF("Hunting Aids", "DamageNumbers", damage_numbers, false),
     {"Village Quests", "HubHP", SET_FACTOR, F(hp.village), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_VILLAGE},
     ON_OFF("Discord", "RichPresence", discord, false),
     ON_OFF("Discord", "ShowHunter", discord_hunter, false),

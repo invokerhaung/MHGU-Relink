@@ -53,6 +53,29 @@ case $RT in
 esac
 TARGET_FLAGS="--target=$RT$API"
 LLVM_AR="$NDK/toolchains/llvm/prebuilt/$HTAG/bin/llvm-ar"
+# Cargo.lock is version 4 (needs cargo >= 1.78). If the active toolchain is older, switch to a
+# newer installed one that also has the android target. Override with RUSTUP_TOOLCHAIN=... if you like.
+LOCKVER=$(sed -n 's/^version = \([0-9]*\)$/\1/p' "$ROOT/Cargo.lock" | head -1)
+if [ -n "$LOCKVER" ] && [ "$LOCKVER" -ge 4 ]; then
+  CV=$(cargo --version 2>/dev/null | sed -E 's/cargo ([0-9]+)\.([0-9]+).*/\1\2/')
+  if [ -z "$CV" ] || [ "$CV" -lt 178 ]; then
+    for TC in $(rustup toolchain list 2>/dev/null | awk '{print $1}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+'); do
+      TV=$(printf '%s' "$TC" | sed -E 's/^([0-9]+)\.([0-9]+).*/\1\2/')
+      [ "$TV" -ge 178 ] || continue
+      if rustup target list --installed --toolchain "$TC" 2>/dev/null | grep -qx "$RT"; then
+        export RUSTUP_TOOLCHAIN="$TC"
+        echo "build_native.sh: Cargo.lock v$LOCKVER needs cargo >=1.78; switching to toolchain $TC"
+        break
+      fi
+    done
+    if [ -z "$RUSTUP_TOOLCHAIN" ]; then
+      echo "build_native.sh: Cargo.lock v$LOCKVER needs cargo >=1.78 but no newer toolchain with $RT found."
+      echo "  Fix: rustup toolchain install 1.85.0 && rustup target add $RT --toolchain 1.85.0"
+      echo "       then: RUSTUP_TOOLCHAIN=1.85.0 bash native/build_native.sh $ABI"
+      exit 1
+    fi
+  fi
+fi
 (cd "$ROOT" && /usr/bin/env "$CARGO_LINKER=$RUST_CC" "$CCVAR=$RUST_CC" "$ARVAR=$LLVM_AR" "$CFLAGSVAR=$TARGET_FLAGS" "$RUSTFLAGSVAR=-C link-arg=$TARGET_FLAGS" cargo build --locked --release --lib -p mhgu-link-ffi -p mhgu-crossplay --target "$RT" --target-dir "$(m "$ROOT/target")") \
   || { echo "build_native.sh: cargo build -p mhgu-link-ffi -p mhgu-crossplay --target $RT failed"; exit 1; }
 MHGU_LINK_LIB="$ROOT/target/$RT/release/libmhgu_link_ffi.a"

@@ -968,6 +968,8 @@ struct Finger {
     uint64_t t0, step_at;
     float swipe, swipe_y;  // the item bar, a menu's cursor: pixels swiped since the last step
     bool moved, done, bar_open, bow_drag_blocked, camera_drag_blocked, item_arrow;
+    bool hold_ok;        // ([Touch] HoldToHide: this finger may still become the long press: it can be cancelled)
+    bool cam_off;        // ([Touch] CameraRightHalf: it landed on the screen's left half: its drag turns nothing)
     uint64_t btn;          // ranged buttons at landing; F_GAME_MENU: the menu's identity at landing
 };
 struct Pulse {
@@ -1017,6 +1019,10 @@ struct State {
     int sel;
     bool pinch;
     float pinch_d0, pinch_s0;
+    bool user_hidden;         // ([Touch] HoldToHide: hidden by a long press, not by the setting)
+    bool hint_said;           // (the "another long press shows them" line has been shown once this session)
+    bool hint_first;
+    uint64_t hint_until;      // (the line's last moment)
 };
 int control_profile(const State &) { return UNIVERSAL_LAYOUT; }
 int display_ranged(const State &) { return 0; }
@@ -1057,6 +1063,9 @@ struct TapAfterUnlock {
 };
 std::atomic<bool> g_visible;
 std::atomic<bool> g_gear_only;  // (the controls hidden: only the settings button shows, and answers)
+// [Touch] HoldToHide: the gold ring filling round a finger held where no control is (touch_draw reads it)
+bool g_hold_ring;   // (a hold is filling the ring now: draw it)
+float g_hold_ring_x, g_hold_ring_y, g_hold_ring_p;  // (its centre and fill 0..1)
 const uint64_t LOCK_AFTER_DRAG = 400 * MS, MIN_PRESS = 70 * MS;
 void recompute_held(State &s);
 void reset_bow_drag(State &s, bool resume = false);
@@ -1153,6 +1162,14 @@ Geo item_arrow(const Rect &item, int d, float h) {
 
 bool floating_stick_enabled(const State &s) {
     return config_live_touch_floating() && (s.layout.style != STYLE_CLASSIC || s.layout_profile == UNIVERSAL_LAYOUT);
+}
+// [Touch] HoldToHide timings (the MH4U port's): a press is told from a drag at HOLD_RING (the gold ring fills), the
+// controls hide/show at HOLD_HIDE.
+const uint64_t HOLD_HIDE = 750 * MS, HOLD_RING = 250 * MS;
+// [Touch] CameraRightHalf: a finger landing on the screen's left half where no control is turns no camera (the
+// settings menu and its own layouts excepted).
+bool cam_left(const State &s, float x) {
+    return config_live_touch_cam_right() && !s.menu && x < s.w * .5f;
 }
 bool in_stick_zone(const State &s, float x, float y, const Rect &item) {
     Geo g = place(s.layout, C_STICK, s.w, s.h);
@@ -1571,6 +1588,8 @@ extern "C" bool touch_event(const SDL_Event *e) {
         if (!f) return true;
         *f = {};
         f->id = e->tfinger.fingerID, f->x = f->x0 = x, f->y = f->y0 = y, f->t0 = now;
+        // ([Touch] HoldToHide: a second finger down at any moment cancels a pending long press on the others)
+        for (Finger &g : s.f) if (&g != f) g.hold_ok = false;
         if (overlay_menu_open()) {
             f->kind = F_MENU;
             bool other = false;
@@ -1595,6 +1614,8 @@ extern "C" bool touch_event(const SDL_Event *e) {
             if (menu_touch_begin(s, *f, e)) return true;
             if (art_touch_begin(s, *f, z, x, y)) return true;
             f->kind = F_CAMERA;  // (hidden: a drag still turns the camera)
+            f->cam_off = cam_left(s, x);
+            f->hold_ok = true;   // (a long press where no control is may hide/show them: [Touch] HoldToHide)
             return true;
         }
         Rect item = zone_rect(z, TZ_ITEM, s.w, s.h), arts = zone_rect(z, TZ_ARTS, s.w, s.h),
@@ -1694,6 +1715,8 @@ extern "C" bool touch_event(const SDL_Event *e) {
             }
         } else {
             f->kind = F_CAMERA;
+            f->cam_off = cam_left(s, x);
+            f->hold_ok = true;  // (a long press where no control is may hide/show them: [Touch] HoldToHide)
         }
         begin_bow_drag(s, *f, x, y);
         recompute_held(s);
@@ -1719,7 +1742,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
         float dx = x - f->x, dy = y - f->y;
         bool was_moved = f->moved;
         if (hypotf(x - f->x0, y - f->y0) > .025f * s.h) f->moved = true;
-        if (f->kind == F_ARTS && f->moved) f->kind = F_CAMERA, dx = x - f->x0, dy = y - f->y0;  // (a drag: the camera)
+        if (f->kind == F_ARTS && f->moved) f->kind = F_CAMERA, dx = x - f->x0, dy = y - f->y0, f->cam_off = cam_left(s, x);  // (a drag: the camera)
         if (f->kind == F_CAMERA && s.menu) {  // a drag moves the cursor, following the finger, a step every so far
             f->swipe += dx, f->swipe_y += dy;
             float ax = fabsf(f->swipe), ay = fabsf(f->swipe_y), step = .075f * s.h;
@@ -1736,7 +1759,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
         } else if (move_button_camera(s, *f, x, y, was_moved, now)) {
             // Keep the held button while its finger steers the camera.
         } else if (f->kind == F_CAMERA) {
-            s.cam_dx += dx, s.cam_dy += dy, s.cam_ns = now;
+            if (!f->cam_off) s.cam_dx += dx, s.cam_dy += dy, s.cam_ns = now;  // ([Touch] CameraRightHalf: the left half turns nothing)
         } else if (f->kind == F_STICK) stick_to(s, x, y);
         else if (item_gesture(*f)) {  // Keep the same finger for continuous selection and reversals.
             item_motion(s, *f, dx, dy, now);
@@ -1892,7 +1915,38 @@ extern "C" uint64_t touch_input(bool pad_connected, bool typing, uint64_t *butto
 #else
     bool screen = s.touched;  // (a desktop: Auto shows them once a finger has touched the screen)
 #endif
-    bool visible = s.edit || (!typing && (mode == TOUCH_ON || (mode == TOUCH_AUTO && !pad_connected && screen)));
+    // [Touch] HoldToHide: hold a finger where no control is (the only one down, unmoved past a drag's slop) for HOLD_HIDE
+    // and the controls hide (every one, the settings button too); another long press anywhere shows them again (hidden,
+    // every finger is the camera's). Not while the port's menu, the editor or a text entry is up, nor a hold that began
+    // on a control (hold_ok is set only for a F_CAMERA on an empty spot). From HOLD_RING a gold ring fills round the
+    // finger (touch_draw), so a press is told from a drag before anything happens.
+    bool hold_on = config_live_touch_hold_hide() != 0;
+    g_hold_ring = false;
+    for (Finger &f : s.f) {
+        if (f.kind != F_CAMERA || !f.hold_ok || f.moved) continue;
+        if (!hold_on || menu || s.menu || s.edit || typing) {
+            if (now - f.t0 >= HOLD_HIDE) f.hold_ok = false;
+            continue;
+        }
+        if (now - f.t0 < HOLD_HIDE) {
+            if (now - f.t0 >= HOLD_RING)
+                g_hold_ring = true, g_hold_ring_x = f.x, g_hold_ring_y = f.y,
+                g_hold_ring_p = (float)(now - f.t0 - HOLD_RING) / (float)(HOLD_HIDE - HOLD_RING);
+            continue;
+        }
+        f.hold_ok = false;
+        s.user_hidden = !s.user_hidden;
+        f.kind = F_MENU, f.part = 0;  // (nothing more of this finger until it lifts: no turn of the camera, no menu step)
+        s.cam_dx = s.cam_dy = 0;
+        tap_due();
+        s.hint_first = s.user_hidden && !s.hint_said;
+        s.hint_until = !s.user_hidden ? 0 : now + (s.hint_first ? 5000 : 2500) * MS;
+        if (s.user_hidden) s.hint_said = true;
+        fprintf(stderr, "[touch] controls %s by a long press where no control is\n", s.user_hidden ? "hidden" : "shown again");
+        break;
+    }
+    if (s.user_hidden && (!hold_on || s.edit)) s.user_hidden = false, s.hint_until = 0;  // (turned off, the editor: shown)
+    bool visible = s.edit || (!typing && !s.user_hidden && (mode == TOUCH_ON || (mode == TOUCH_AUTO && !pad_connected && screen)));
     s.auto_wait = !s.edit && !typing && mode == TOUCH_AUTO && !pad_connected && !screen;
     bool was_visible = g_visible.exchange(visible);
     if (!visible || menu || s.menu || s.edit) cancel_item_gestures(s);
@@ -1912,7 +1966,7 @@ extern "C" uint64_t touch_input(bool pad_connected, bool typing, uint64_t *butto
     }
     // (hidden, by a controller or by Off: the settings button alone stays, or a phone without a controller had no way
     // back to the menu but clearing the app's data)
-    g_gear_only = !visible && !typing && screen;
+    g_gear_only = !visible && !typing && screen && !s.user_hidden;
     {
         static int was = -1;
         if (was != (int)visible) {
@@ -3324,6 +3378,17 @@ extern "C" void touch_draw(float w, float h) {
     float idle = s.last_ns ? (now - s.last_ns) / 1e9f : 99.0f;
     float a = config_live_touch_opacity() * (idle > 5.0f ? .65f : 1.0f);  // (dimmer after a while untouched)
     ImDrawList *dl = ImGui::GetBackgroundDrawList();  // (under the port's menus and notices)
+    // [Touch] HoldToHide: the gold ring filling round the finger held where no control is (it grows to a full circle
+    // when the controls hide/show). Drawn here so it shows whether the controls are up or already hidden.
+    if (g_hold_ring) {
+        float kx = s.w > 0 ? w / s.w : 1.f, ky = s.h > 0 ? h / s.h : 1.f;
+        ImVec2 c(g_hold_ring_x * kx, g_hold_ring_y * ky);
+        float r = .075f * h, p = g_hold_ring_p < 0 ? 0 : (g_hold_ring_p > 1 ? 1 : g_hold_ring_p);
+        ImU32 gold = IM_COL32(255, 196, 64, (int)(230 * a)), back = IM_COL32(0, 0, 0, (int)(90 * a));
+        dl->AddCircle(c, r, back, 48, std::max(1.f, .012f * h));
+        dl->PathArcTo(c, r, -1.5707963f, -1.5707963f + 6.2831853f * p, 48);
+        dl->PathStroke(gold, 0, std::max(1.5f, .016f * h));
+    }
     if (!g_visible) {  // (hidden: the settings button alone, a little fainter)
         if (g_gear_only) control(dl, font, s.layout, C_SETTINGS, w, h, s, a * .75f);
         if (pausing) draw_mix_pause(dl, font, pause, w, h);

@@ -90,6 +90,7 @@ static void boot(const char *root) {
     effects_init();  // (the game's particles can be left out: runtime/hle/effects.c)
     villagehub_init();  // (Village quests at the Hub / Pub counter: runtime/hle/villagehub.c)
     rewardbox_init();  // (quest rewards: Send to the Item Box in one go: runtime/hle/rewardbox.c)
+    supplybox_init();  // (the supply box: an item taken goes to the pouch at once: runtime/hle/supplybox.c)
     urgentcredit_init();  // (Urgent quests count for all who clear them: runtime/hle/urgentcredit.c)
     mashrate_init();  // (mashing out of a stun at high frame rates: runtime/hle/mashrate.c)
     hatestep_init();  // (monsters' attention scores at high frame rates: runtime/hle/hatestep.c)

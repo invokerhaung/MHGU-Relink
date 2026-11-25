@@ -16,6 +16,7 @@ extern "C" bool vk_low_memory_device(void);  // (nvn/vulkan/textures.c)
 #include "modorder.h"
 #include "net/net.h"
 #include "touch.h"
+#include "verify.h"
 #include "textinput.h"
 #include "imgui_internal.h"
 #include <SDL3/SDL.h>
@@ -141,6 +142,27 @@ struct TouchIconTab {
     bool pending = false, active = false;
     std::string notice;
 } touch_icons;
+// Verify game files (runtime/verify.c): the full read runs on its own thread, since 12 GB take a few minutes; `done` and
+// `ok` say when it finished and what it found, `msg` holds the sentence the footer shows.
+struct VerifyResult {
+    std::atomic<int> state{0};  // 0 not started, 1 reading, 2 finished
+    bool ok = false;
+    char msg[512] = {};
+};
+std::shared_ptr<VerifyResult> verify_run;
+void start_verify() {
+    if (verify_run && verify_run->state.load() == 1) return;  // (already reading)
+    verify_run = std::make_shared<VerifyResult>();
+    verify_run->state = 1;
+    auto result = verify_run;
+    std::thread([result]() {
+        char msg[512];
+        bool ok = verify_game_files(msg, sizeof msg);
+        snprintf(result->msg, sizeof result->msg, "%s", msg);
+        result->ok = ok;
+        result->state = 2;
+    }).detach();
+}
 // The game actions (runtime/actions.h, the [Actions*] sections of the ini): edited as a draft like the settings, saved
 // with them. dev: the device whose bindings the rows show (0 the controller, 1 keyboard and mouse); weapon: 0 every
 // weapon, 1..15 that class's own bindings; capture: the action an input is being chosen for (-1: none)
@@ -519,11 +541,16 @@ bool equal(const Config &a, const Config &b) {
     SAME(bonus_content);
     SAME(village_in_hub);
     SAME(quest_hold_send);
+    SAME(quest_send_all);
+    SAME(supply_wait);
+    SAME(damage_numbers);
     SAME(mouse_sensitivity);
     SAME(touch_controls);
     SAME(touch_hud);
     SAME(touch_auto_r);
     SAME(touch_floating);
+    SAME(touch_hold_hide);
+    SAME(touch_cam_right);
     SAME(touch_camera);
     SAME(touch_opacity);
     SAME(mouse_sensitivity_y);
@@ -1907,6 +1934,8 @@ void reset_section() {
         c.touch_hud = f.touch_hud;
         c.touch_auto_r = f.touch_auto_r;
         c.touch_floating = f.touch_floating;
+        c.touch_hold_hide = f.touch_hold_hide;
+        c.touch_cam_right = f.touch_cam_right;
         c.touch_camera = f.touch_camera;
         c.touch_opacity = f.touch_opacity;
         c.touch_vibration = f.touch_vibration;
@@ -1943,6 +1972,9 @@ void reset_section() {
         c.village_in_hub = f.village_in_hub;
         c.quest_hold_send = f.quest_hold_send;
         c.quest_hold_send = f.quest_hold_send;
+        c.quest_send_all = f.quest_send_all;
+        c.supply_wait = f.supply_wait;
+        c.damage_numbers = f.damage_numbers;
         c.share_urgent = f.share_urgent;
         c.hp = f.hp;
         quest_keys();
@@ -2523,6 +2555,10 @@ std::vector<Row> main_rows() {
         add_bool(r, "touch.hud", "Move the HUD for touch", &c.touch_hud, ini("MoveHUD"));
         add_bool(r, "touch.floating", "Floating left stick", &c.touch_floating, ini("FloatingStick"));
         r.back().help = tr("On: the left stick appears where your finger lands. Off: it stays at the saved position. The stick moves the hunter, never the camera. Automatic running uses its separate switch.");
+        add_bool(r, "touch.hold_hide", "Long press hides the controls", &c.touch_hold_hide, ini("HoldToHide"));
+        r.back().help = tr("On: hold a finger where no control is (the same 750 ms a press is told from a drag) to hide every touch control, the settings button too; another long press anywhere shows them again. A gold ring fills round the finger before it happens. Off by default.");
+        add_bool(r, "touch.cam_right", "Camera on the right half only", &c.touch_cam_right, ini("CameraRightHalf"));
+        r.back().help = tr("On: a finger that lands on the screen's left half where no control is turns no camera; only the right half does. Off by default.");
         add_bool(r, "touch.auto_r", "Full stick automatically runs", &c.touch_auto_r, ini("AutoR"));
         r.back().help = tr("On: with the weapon sheathed, slide the fixed or floating movement stick past its rim to hold the game's native R and run, when the game allows running. The hold starts at 1.60x the radius and stays until 1.45x; with the weapon drawn it does not trigger, so R never becomes a guard or attack. Manual R, combos and a controller's R work as before. Default: Off.");
         action(r, "touch.buttons", tr("Buttons on the screen"), []() { push(View::TouchButtons, "tb.0"); });
@@ -2602,6 +2638,12 @@ std::vector<Row> main_rows() {
         add_bool(r, "village", "Village quests in Hub", &c.village_in_hub, ini("VillageQuestsInHub"));
         add_bool(r, "urgent", "Urgent quests count for all", &c.share_urgent, ini("ShareUrgentCredit"));
         add_bool(r, "rewards.hold", "Hold A to send items to box", &c.quest_hold_send, ini("HoldASend"));
+        add_bool(r, "rewards.all", "Send every reward at once", &c.quest_send_all, ini("SendAll"));
+        r.back().help = tr("On: choosing Send to the Item Box on the rewards menu sends every reward in one go, instead of one by one. Off by default.");
+        add_bool(r, "supply.nowait", "Take supply items at once", &c.supply_wait, ini("NoWait"));
+        r.back().help = tr("On: an item taken from the supply box goes straight into the pouch, without waiting for it to fly there. Off by default.");
+        add_bool(r, "hunt.damage", "Damage numbers", &c.damage_numbers, ini("DamageNumbers"));
+        r.back().help = tr("On: every hit in a quest shows its damage as a number over the monster, for each monster hit. Off by default.");
         header(r, "hp.header", tr("Monster HP Scaling"));
         for (int i = 0; i < 4; i++)
             number(r, "hp." + std::to_string(i), std::to_string(i + 1) + " " + tr(i == 0 ? "Hunter" : "Hunters"), &c.hp.scale[i],
@@ -2728,6 +2770,8 @@ std::vector<Row> main_rows() {
         }
         action(r, "game.folder", tr("Game folder"), []() { ui_request_game_folder(); });
         r.back().help = tr("Where the game's exefs and romfs are read from. A new folder is used the next time the game starts.");
+        action(r, "game.verify", tr("Verify game files"), []() { start_verify(); });
+        r.back().help = tr("Reads every game file to the end, so a copy that lost or cut short a file is found: it takes a minute or two and nothing is changed. The result appears below.");
         action(r, "log.share", tr("Share log"), []() { ui_request_share_log(); });
         r.back().help = tr("Sends the game's log to the app you choose, for whoever is helping you with a problem.");
         action(r, "log.graphics", tr("Record graphics diagnostic"), []() { vk_trace_request(); });
@@ -4044,6 +4088,11 @@ void touch_help(ImDrawList *dl, const ImRect &r, const std::vector<Row> &rows, b
         foot.push_back({s.error, t.warn});
     else if (s.saved_notice)
         foot.push_back({saved_text(), k.glow});
+    if (verify_run) {
+        int st = verify_run->state.load();
+        if (st == 1) foot.push_back({tr("Verifying the game files..."), k.dim});
+        else if (st == 2) foot.push_back({verify_run->msg, verify_run->ok ? k.glow : t.warn});
+    }
     foot.push_back({tr("* Restart required"), k.dim});
     float x = r.Min.x + pad, wrap = r.GetWidth() - pad * 2, bottom = r.Max.y - pad * .7f;
     if (side) {
@@ -4759,6 +4808,11 @@ void settings_panel(bool *open) {
         ImGui::PopStyleColor();
     } else if (s.saved_notice)
         ImGui::TextUnformatted(saved_text());
+    if (verify_run) {
+        int st = verify_run->state.load();
+        if (st == 1) ImGui::TextUnformatted(tr("Verifying the game files..."));
+        else if (st == 2) ImGui::TextWrapped("%s", verify_run->msg);
+    }
     if (s.view == View::Main) {
         for (const auto &note : page_notes()) {
             if (note.second)

@@ -39,12 +39,14 @@ static void ImGui_ImplVulkan_UpdateTexture(ImTextureData *) {}
 
 #include "config.h"
 #include "hdr_stats.h"
+#include "platform.h"
 #include "touch.h"
 #include "forge.h"
 #include "menu_confirm.h"
 #include "overlay.h"
 #include "perfstats.h"
 #include "hle/chat.h"
+#include "hunt_aids.h"
 #include "settings_locale.h"
 #include "settings_panel.h"
 #include "voice.h"
@@ -1005,11 +1007,38 @@ static void forge_free_render(void *cpu, uint32_t width, uint32_t height) {
     }
 }
 
+// Damage numbers (hunt_aids.h): over the game's picture, under the touch controls. Each number rises and fades over its
+// second. Drawn in display pixels.
+static void hunt_draw(float w, float h) {
+    HuntView view;
+    if (!huntaids_view(&view)) return;
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    uint64_t now = (uint64_t)plat_now_ns();
+    float size = std::max(18.0f, h * 0.03f);
+    ImFont *font = ImGui::GetFont();
+    for (int i = 0; i < view.nnum; i++) {
+        const HuntNumber &n = view.num[i];
+        if (!n.shown) continue;
+        float age = (float)((double)(now - n.born_ns) / (double)HUNT_NUMBER_NS);  // 0..1 over its second
+        if (age < 0 || age > 1) continue;
+        float x = n.x * w, y = n.y * h - age * size * 2.2f;  // (rises)
+        float alpha = age < 0.7f ? 1.0f : 1.0f - (age - 0.7f) / 0.3f;
+        char text[16];
+        snprintf(text, sizeof text, "%d", n.value);
+        float fs = size * (1.0f + 0.25f * (1.0f - age));  // (a little bigger as it is dealt)
+        ImVec2 sz = font->CalcTextSizeA(fs, FLT_MAX, 0, text);
+        ImU32 col = ImGui::GetColorU32(ImVec4(1, 1, 1, alpha));
+        ImU32 sh = ImGui::GetColorU32(ImVec4(0, 0, 0, alpha * 0.8f));
+        dl->AddText(font, fs, ImVec2(x - sz.x * 0.5f + 1.5f, y - sz.y + 1.5f), sh, text);
+        dl->AddText(font, fs, ImVec2(x - sz.x * 0.5f, y - sz.y), col, text);
+    }
+}
+
 void overlay_frame(void *cpu) {
-    // (once a frame on the game's update thread: with [Application] PauseInBackground the game stops here while the app
-    // is in the background, its clock held: runtime/hle/vi.c)
     vi_pause_game();
     if (!g_ready) return;
+    // (the game's update thread, once a frame after the game's update: read the monsters' health for the damage numbers)
+    huntaids_frame();
     std::lock_guard<std::mutex> frame(g_frame_lock);
     if (!g_plugins_init && forge_plugins_graphics_ready()) {
         g_plugins_init = true;
@@ -1031,7 +1060,8 @@ void overlay_frame(void *cpu) {
 #endif
     float loading = loading_alpha(now);
     bool voice = voice_sending() || voice_talking() > 0;
-    if (!open && !free_render && !notice && !chat && !touch && !stats && !fps && !loading && !voice) {  // (nothing to draw)
+    bool hunt = huntaids_any();
+    if (!open && !free_render && !notice && !chat && !touch && !stats && !fps && !loading && !voice && !hunt) {  // (nothing to draw)
         std::lock_guard<std::mutex> l(g_snap_lock);
         if (g_snap.Valid) snap_clear();
         apply_input(io);  // (keep the queue short)
@@ -1054,6 +1084,7 @@ void overlay_frame(void *cpu) {
     bool under = g_forge_over;  // (the settings wait under Forge's menu: neither drawn nor given input)
     if (!under) settings_panel_before_frame(g_settings_open);
     ImGui::NewFrame();
+    if (huntaids_any()) hunt_draw((float)w, (float)h);  // (the damage numbers, over the game's picture)
 #ifdef __ANDROID__
     if (!g_forge_open) g_forge_drag = {};
 #endif

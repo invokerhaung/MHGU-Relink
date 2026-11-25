@@ -70,3 +70,4 @@ packaging/*/*.pkg.tar.zst
 # Local test output and runtime data
 /analysis/
 /run/
+android/.idea/

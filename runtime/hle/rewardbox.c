@@ -17,6 +17,7 @@
 #define PAD_DIRS   0x6c34u  // its bits 0xf0 are added to PAD_TRG by 0x588ee8 (the stick's directions)
 #define B_A        0x2000u
 #define ST_SEND    4u       // the grid that sends to the box
+#define ST_MENU    2u       // the menu, where "Send to the Item Box" is chosen
 #define SELECT_NS  100000000ull  // A held this long: the cursor goes to the next item (a tap is shorter)
 #define INITIAL_NS 350000000ull  // from the press to the second item's send (a key's first delay)
 #define REPEAT_NS  70000000ull   // between the sends after it
@@ -79,6 +80,18 @@ static void hold_step(Cpu *c, uint32_t o, uint32_t mode, uint32_t p, uint64_t no
     else g_next_ns = now + REPEAT_NS;
 }
 
+// Send every filled slot of the grid to the box, once: each is the game's own A on it (its entry becomes 0), so a
+// full box or an item that can't go is left as the game leaves it. Used when the menu's "Send to the Item Box" is
+// chosen with [Quest Rewards] SendAll on (the step goes from 2, the menu, to 4, the grid).
+static void send_all(Cpu *c, uint32_t o, uint32_t mode, uint32_t p) {
+    uint32_t cols = LD8(o + 0xda), rows = LD8(o + 0xdb);
+    for (uint32_t i = 0; i < cols * rows; i++)
+        if (filled(o, mode, i % cols, i / cols)) {
+            ST8(o + 0xd8, i % cols), ST8(o + 0xd9, i / cols);
+            press_a(c, o, mode, p);
+        }
+}
+
 static void rewards(Cpu *c) {
     uint32_t o = c->r[0], mode = c->r[1], p = pad();
     uint64_t now = plat_now_ns();
@@ -87,7 +100,13 @@ static void rewards(Cpu *c) {
     else if (!g_a_since && (LD32(p + PAD_TRG) & B_A)) g_a_since = now, g_selected = false;  // (a hold begins with a press in the
                                                                                           // grid: the A that chose Send to the
                                                                                           // Item Box, held on, is none)
+    uint32_t step_before = LD32(o + 0x44);
     fnhook_call_original(c, FN_REWARDS);
+    // [Quest Rewards] SendAll: the menu's "Send to the Item Box" was just chosen (step 2 -> 4): send everything at once
+    if (config_live_quest_send_all() && step_before == ST_MENU && LD32(o + 0x44) == ST_SEND) {
+        send_all(c, o, mode, p);
+        g_a_since = 0;  // (no hold-to-send on top of it)
+    }
     if (g_a_since && LD32(o + 0x44) == ST_SEND) hold_step(c, o, mode, p, now);
 }
 

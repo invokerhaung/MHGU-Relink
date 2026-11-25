@@ -19,6 +19,8 @@
 
 static Config saved, startup;
 static SDL_AtomicInt live_touch_floating;
+static SDL_AtomicInt live_touch_hold_hide;
+static SDL_AtomicInt live_touch_cam_right;
 static SDL_AtomicInt grass_switch = {1};
 static bool have_saved, runtime_ready, runtime_fsr;
 static SDL_AtomicInt volume = {100}, confirm_exit = {1}, language = {0}, mute_in_background, window_focused = {1}, show_fps, menu_chord = {1}, show_battery;
@@ -32,7 +34,7 @@ static SDL_AtomicInt live_fps, live_fov, live_mouse, live_draw = {0x3f800000}, l
                      live_touch_vibration = {1}, live_phone_rumble = {1}, live_show_stats, live_pause_bg = {1},
                      live_shadows = {1}, live_bloom = {1}, live_reverb = {1}, live_hud_size = {100}, live_effects = {1}, live_upscale_filter = {0},
                      live_fsr_sharpness, live_fsr_reactive, live_village, live_ldn_port, live_sync_zako, live_ldn_direct, live_bonus,
-                     audio_output, live_hold_send = {1};
+                     audio_output, live_hold_send = {1}, live_send_all, live_supply_wait, live_damage_numbers;
 static SDL_AtomicInt live_kerning, live_bold;
 // [HDR]
 static SDL_AtomicInt live_hdr, live_hdr_format, live_hdr_gamma = {HDR_GAMMA_22}, live_hdr_tonemap = {HDR_TONEMAP_RENODRT};
@@ -111,6 +113,8 @@ static void publish_live(const Config *c, bool all) {
     if (all || c->touch_hud != saved.touch_hud) SDL_SetAtomicInt(&live_touch_hud, c->touch_hud);
     if (all || c->touch_auto_r != saved.touch_auto_r) SDL_SetAtomicInt(&live_touch_auto_r, c->touch_auto_r);
     if (all || c->touch_floating != saved.touch_floating) SDL_SetAtomicInt(&live_touch_floating, c->touch_floating);
+    if (all || c->touch_hold_hide != saved.touch_hold_hide) SDL_SetAtomicInt(&live_touch_hold_hide, c->touch_hold_hide);
+    if (all || c->touch_cam_right != saved.touch_cam_right) SDL_SetAtomicInt(&live_touch_cam_right, c->touch_cam_right);
     for (int i = 0; i < TB_COUNT; i++) SDL_SetAtomicInt(&live_touch_show[i], c->touch_show[i]);
     for (int profile = 0; profile < TOUCH_LAYOUT_PROFILES; profile++)
         for (int i = 0; i < TOUCH_COMBOS; i++) {
@@ -148,6 +152,9 @@ static void publish_live(const Config *c, bool all) {
     if (all || c->fsr_reactive != saved.fsr_reactive) set_float(&live_fsr_reactive, c->fsr_reactive);
     if (all || c->village_in_hub != saved.village_in_hub) SDL_SetAtomicInt(&live_village, c->village_in_hub);
     if (all || c->quest_hold_send != saved.quest_hold_send) SDL_SetAtomicInt(&live_hold_send, c->quest_hold_send);
+    if (all || c->quest_send_all != saved.quest_send_all) SDL_SetAtomicInt(&live_send_all, c->quest_send_all);
+    if (all || c->supply_wait != saved.supply_wait) SDL_SetAtomicInt(&live_supply_wait, c->supply_wait);
+    if (all || c->damage_numbers != saved.damage_numbers) SDL_SetAtomicInt(&live_damage_numbers, c->damage_numbers);
     if (all || memcmp(&c->hp, &saved.hp, sizeof c->hp)) {
         SDL_LockSpinlock(&live_hp_lock);
         live_hp = c->hp;
@@ -248,6 +255,9 @@ float config_live_fsr_sharpness(void) { return get_float(&live_fsr_sharpness); }
 float config_live_fsr_reactive(void) { return get_float(&live_fsr_reactive); }
 int config_live_village_in_hub(void) { return SDL_GetAtomicInt(&live_village); }
 int config_live_quest_hold_send(void) { return SDL_GetAtomicInt(&live_hold_send); }
+int config_live_quest_send_all(void) { return SDL_GetAtomicInt(&live_send_all); }
+int config_live_supply_wait(void) { return SDL_GetAtomicInt(&live_supply_wait); }
+int config_live_damage_numbers(void) { return SDL_GetAtomicInt(&live_damage_numbers); }
 int config_live_ldn_port(void) { return SDL_GetAtomicInt(&live_ldn_port); }
 int config_live_sync_small_monsters(void) { return SDL_GetAtomicInt(&live_sync_zako); }
 int config_live_lag_compensation(void) { return SDL_GetAtomicInt(&live_lagcomp); }
@@ -280,6 +290,8 @@ void config_set_touch_profile(int profile) {
 int config_live_touch_hud(void) { return SDL_GetAtomicInt(&live_touch_hud); }
 int config_live_touch_auto_r(void) { return SDL_GetAtomicInt(&live_touch_auto_r); }
 int config_live_touch_floating(void) { return SDL_GetAtomicInt(&live_touch_floating); }
+int config_live_touch_hold_hide(void) { return SDL_GetAtomicInt(&live_touch_hold_hide); }
+int config_live_touch_cam_right(void) { return SDL_GetAtomicInt(&live_touch_cam_right); }
 int config_live_lock_on(void) { return SDL_GetAtomicInt(&live_lock_on); }
 int config_live_persistent_lock_on(void) { return SDL_GetAtomicInt(&live_persistent_lock_on); }
 int config_live_touch_show(int button) { return SDL_GetAtomicInt(&live_touch_show[button]); }

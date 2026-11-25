@@ -72,6 +72,9 @@ typedef struct {
     int bonus_content;        // free downloads copied from a donor save into saves without any (runtime/services/bonus.c)
     int village_in_hub;       // L / R at the Hub's / Pub's quest counter switch to Village quests (runtime/hle/villagehub.c)
     int quest_hold_send;      // [Quest Rewards] HoldASend: A held on the Reward Box sends the items one after another (runtime/hle/rewardbox.c)
+    int quest_send_all;       // [Quest Rewards] SendAll: picking "Send to the Item Box" on the menu sends every reward at once (runtime/hle/rewardbox.c)
+    int supply_wait;          // [Supply Box] NoWait: a supply item is taken at once, not after its fly into the pouch (runtime/hle/supplybox.c)
+    int damage_numbers;       // [Hunting Aids] DamageNumbers: hit per monster in a hunt gets its own number over it (runtime/hle/huntaids.c)
     int share_urgent;         // an unlocked Urgent quest someone else posted counts when cleared (runtime/hle/urgentcredit.c)
     HpScale hp;               // large monster HP in Hub-type quests (runtime/hle/hpscale.c)
     float mouse_sensitivity;  // mouse look: times the hunt camera's angle per count (runtime/hle/mousecam.c), and
@@ -156,6 +159,8 @@ typedef struct {
     int touch_hud;            // [Touch] MoveHUD: the HUD moves out of the thumbs' way while they show (nvn/vulkan/exec.c)
     int touch_auto_r;         // [Touch] AutoR: full movement-stick travel requests running only; default Off
     int touch_floating;       // [Touch] FloatingStick: start the left stick at the finger's landing point
+    int touch_hold_hide;      // [Touch] HoldToHide: hold a finger where no control is to hide/show the controls
+    int touch_cam_right;      // [Touch] CameraRightHalf: a drag on the screen's left half turns no camera
     float touch_camera;       // [Touch] CameraSpeed: the camera's turn for a drag (1: about 90 degrees a screen height)
     float touch_opacity;      // [Touch] Opacity: of the controls, 0.2 .. 1
     int render_scale;         // [Display] RenderScale: RenderResolution Auto's 3D size, percent of the screen's (25..100)
@@ -336,6 +341,9 @@ void config_live_hp(HpScale *out);      // [Monster HP] and [Village Quests] Hub
 float config_live_hp_village(void);     // [Village Quests] HubHP as saved now
 int config_live_village_in_hub(void);   // [Village Quests] VillageQuestsInHub (hle/villagehub.c)
 int config_live_quest_hold_send(void);  // [Quest Rewards] HoldASend (hle/rewardbox.c)
+int config_live_quest_send_all(void);   // [Quest Rewards] SendAll (hle/rewardbox.c)
+int config_live_supply_wait(void);      // [Supply Box] NoWait (hle/supplybox.c)
+int config_live_damage_numbers(void);   // [Hunting Aids] DamageNumbers (hle/huntaids.c)
 int config_live_ldn_port(void);         // [Multiplayer] Port as saved now: counts from the next hub hosted or search
 void config_live_ldn_join(char *join, size_t size);  // [Multiplayer] Join: the next search (net/ldn.c)
 int config_live_ldn_direct(void);  // [Multiplayer] Direct (net/ldn.c: for the next player link)
@@ -349,6 +357,8 @@ int config_live_touch_controls(void);  // [Touch] (runtime/touch.cpp)
 int config_live_touch_hud(void);
 int config_live_touch_auto_r(void);
 int config_live_touch_floating(void);
+int config_live_touch_hold_hide(void);   // [Touch] HoldToHide (runtime/touch.cpp)
+int config_live_touch_cam_right(void);   // [Touch] CameraRightHalf (runtime/touch.cpp)
 int config_live_lock_on(void);
 int config_live_persistent_lock_on(void);
 int config_live_touch_show(int button);        // TB_*
