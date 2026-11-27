@@ -982,6 +982,19 @@ static inline const char *settings_text(int language, const char *english) {
         {"Open %s.", "Abrir %s.", "打开 %s。"},
         {"No keyboard or mouse settings on this device", "Este dispositivo no tiene ajustes de teclado ni ratón",
          "此设备没有键盘或鼠标设置"},
+        {"Hold buttons", "Botones de mantener", "持续长按按钮"},
+        {"The universal layout has six combined buttons. A template saves each button's combination, controller binding and name.",
+         "La disposición universal tiene seis botones combinados. Una plantilla guarda la combinación, el mando y el nombre de cada botón.",
+         "通用布局有六个组合键。模板会保存每个按键的组合、手柄绑定和名称。"},
+        {"Tap this button in a hunt to hold its game buttons down without keeping a finger on it; tap it again to let go. Tapping another button lets go when that button is released. A template saves each button's buttons and name.",
+         "Toca este botón en una misión para mantener pulsados sus botones del juego sin tener el dedo encima; vuelve a tocarlo para soltar. Si tocas otro botón, se suelta al levantar ese botón. Una plantilla guarda los botones y el nombre de cada botón.",
+         "任务中点此按钮即可在不按住手指的情况下持续按住其对应的游戏按键；再次点击即松开。若点击其他按钮，则在其他按钮抬起时松开。模板会保存每个按钮的按键和名称。"},
+        {"A custom name shown on this hold button. Leave it empty to show the button names. Names are saved in custom templates.",
+         "Nombre personalizado de este botón de mantener. Déjalo vacío para mostrar los nombres de los botones. Las plantillas guardan estos nombres.",
+         "显示在此持续长按按钮上的自定义名称。留空则显示按键名称。名称会随自定义模板一起保存。"},
+        // Hold button page/rows: the item titles, added in order of Hold N
+        {"Button name", "Nombre del botón", "按钮名称"},
+        {"Hold button", "Botón de mantener", "持续长按按钮"},
     };
     for (unsigned i = 0; i < sizeof messages / sizeof *messages; ++i)
         if (!strcmp(english, messages[i].en)) {

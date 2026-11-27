@@ -449,6 +449,47 @@ public class GameActivity extends SDLActivity {
                 }
             }
         }
+        // 三个战斗辅助金手指（常时标记 BOSS / 任务立即完成 / 跳过结算等待）：同样首次解压到 cheats/，默认关闭
+        // （各自独立开关，写在 cheats/_off.txt；Trucos 页可单独开关）。
+        if (!prefs.getBoolean("cheats_jinshouzhi_installed", false)) {
+            File js = new File(home, "cheats/jinshouzhi.txt");
+            if (copyAsset("cheats/jinshouzhi.txt", js)) {
+                try (OutputStream o = new FileOutputStream(new File(home, "cheats/_off.txt"), true)) {
+                    o.write(("\njinshouzhi.txt\t常时标记BOSS\n"
+                            + "jinshouzhi.txt\t任务立即完成 START+↓\n"
+                            + "jinshouzhi.txt\t跳过结算等待时间 L+R+→\n").getBytes("UTF-8"));
+                    prefs.edit().putBoolean("cheats_jinshouzhi_installed", true).apply();
+                } catch (Exception e) {
+                    Log.w(TAG, "cheats/_off.txt: " + e);
+                }
+            }
+        }
+        // 大马金手指（冷热无效 / 砥石高速化 / 道具不减 / 最大调和 / 全生产免素材 / 道具上限99 / 雷娘系列 / 箱子容量等）：
+        // 同样首次解压到 cheats/，默认全部关闭，各自独立开关（写在 cheats/_off.txt；Trucos 页可单独开关）。
+        // 注：[箱子容量...] 内含一条 C031B400（宽度 nibble=3 非法），运行时会自动跳过该条并记日志，其余 11 条正常。
+        if (!prefs.getBoolean("cheats_daima_installed", false)) {
+            File dm = new File(home, "cheats/daimajinshouzhi.txt");
+            if (copyAsset("cheats/daimajinshouzhi.txt", dm)) {
+                try (OutputStream o = new FileOutputStream(new File(home, "cheats/_off.txt"), true)) {
+                    o.write(("\ndaimajinshouzhi.txt\t冷热无效\n"
+                            + "daimajinshouzhi.txt\t砥石使用高速化\n"
+                            + "daimajinshouzhi.txt\t携带道具使用不减\n"
+                            + "daimajinshouzhi.txt\t最大调和数\n"
+                            + "daimajinshouzhi.txt\t全生产制造列表无需素材\n"
+                            + "daimajinshouzhi.txt\t携带道具上限提升至 99个\n"
+                            + "daimajinshouzhi.txt\t*雷娘* 道具获取 4倍\n"
+                            + "daimajinshouzhi.txt\t*雷娘* 钱 9999999 同时按下ZL+ZR+A生效\n"
+                            + "daimajinshouzhi.txt\t*雷娘* 龙历院点数 9999999 同时按下ZL+ZR+A生效\n"
+                            + "daimajinshouzhi.txt\t*雷娘* 道具箱第一格99 同时按下ZL+ZR+A生效\n"
+                            + "daimajinshouzhi.txt\t*雷娘* 道具袋第一格99 同时按下ZL+ZR+A生效\n"
+                            + "daimajinshouzhi.txt\t箱子容量 道具箱23页/装备箱20页\n"
+                            + "daimajinshouzhi.txt\t自动显示地图\n").getBytes("UTF-8"));
+                    prefs.edit().putBoolean("cheats_daima_installed", true).apply();
+                } catch (Exception e) {
+                    Log.w(TAG, "cheats/_off.txt: " + e);
+                }
+            }
+        }
     }
 
     private void prepareForgeAssets() {

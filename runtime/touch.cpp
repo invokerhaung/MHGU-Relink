@@ -79,9 +79,10 @@ enum Ctl {
     C_LAYOUT, C_DPAD_TOGGLE, C_STICK, C_RSTICK, C_RSTICK_TOGGLE, C_LOCK,  // append saved controls so existing keys keep their identities
     C_DPAD, C_MPILL, C_FX, C_FY, C_MINUS, C_ML, C_MR,  // (the menu layout's: saved d-pad and fixed face buttons)
     C_MZL, C_MZR,                                       // (and ZL / ZR beside L / R, when [Touch] ShowMenuZL / ZR say so)
+    C_HOLD, C_HOLD_END = C_HOLD + TOUCH_HOLDS - 1,      // (the player's holding buttons; appended so saved keys keep theirs)
     C_COUNT
 };
-const int C_LAID = C_LOCK + 1;
+const int C_LAID = C_HOLD_END + 1;
 enum Icon { I_ATTACK, I_DODGE, I_SHIELD, I_BURST, I_TARGET_SELECT, I_CAMERA, I_MENU, I_MAP, I_GEAR, I_SHEATHE, I_RUN, I_STICK, I_DPAD,
             I_LETTER, I_MINUS, I_COMBO, I_SHOT, I_BOW, I_RELOAD, I_SCOPE, I_CROUCH, I_COATING, I_MELEE, I_GATHER, I_UP, I_DOWN, I_LOCK };
 
@@ -153,6 +154,13 @@ const Def DEFS[C_COUNT] = {
     {"mr", "R", I_LETTER, "R", B(BTN_R), true, 0, 0, .044f},
     {"mzl", "ZL", I_LETTER, "ZL", B(BTN_ZL), true, 0, 0, .044f},  // (sections and more information: the item box, the smithy)
     {"mzr", "ZR", I_LETTER, "ZR", B(BTN_ZR), true, 0, 0, .044f},
+    // the player's holding buttons ([Touch] Hold1..): tapped once, hold their game buttons down until tapped again
+    {"hold1", "", I_COMBO, "", 0, true, .60f, .72f, .052f},
+    {"hold2", "", I_COMBO, "", 0, true, .60f, .86f, .052f},
+    {"hold3", "", I_COMBO, "", 0, true, .73f, .72f, .052f},
+    {"hold4", "", I_COMBO, "", 0, true, .73f, .86f, .052f},
+    {"hold5", "", I_COMBO, "", 0, true, .86f, .72f, .052f},
+    {"hold6", "", I_COMBO, "", 0, true, .86f, .86f, .052f},
 };
 // which layout a control belongs to: the hunt's (the pill, B, the map, the stick), the menus' (the d-pad, the diamond,
 // Minus), or both
@@ -213,12 +221,14 @@ int show_setting(int i) {  // the [Touch] Show* a control follows (the settings 
     }
 }
 bool is_combo(int i) { return i >= C_COMBO && i <= C_COMBO_END; }
+bool is_hold(int i) { return i >= C_HOLD && i <= C_HOLD_END; }
 bool is_tab(int i) { return i == C_ML || i == C_MR || i == C_MZL || i == C_MZR; }  // (the menu's shoulders, drawn as tabs)
 bool is_dpad(int i) { return i == C_DPAD || i == C_HDPAD; }
 bool classic_control(int i) {
     return i == C_HEAVY || i == C_LIGHT || i == C_DODGE || i == C_SHEATHE || i == C_R || i == C_L ||
            i == C_ZL || i == C_ZR || i == C_MENU || i == C_HMINUS || i == C_MAP || i == C_R3 ||
-           i == C_HDPAD || i == C_DPAD_TOGGLE || i == C_STICK || i == C_RSTICK_TOGGLE || i == C_LOCK || i == C_SETTINGS || is_combo(i);
+           i == C_HDPAD || i == C_DPAD_TOGGLE || i == C_STICK || i == C_RSTICK_TOGGLE || i == C_LOCK || i == C_SETTINGS || is_combo(i) ||
+           is_hold(i);
 }
 bool in_mode(int i, bool menu, bool in_quest, int ranged = -1) {
     if (is_ammo(i)) return in_quest && !menu && config_live_touch_show(TB_AMMO) && weapon_ranged(weapon_hunter());
@@ -229,6 +239,7 @@ bool in_mode(int i, bool menu, bool in_quest, int ranged = -1) {
     int show = show_setting(i);
     if (show >= 0 && !config_live_touch_show(show)) return false;
     if (is_combo(i)) return config_live_touch_combo(config_live_touch_profile(), i - C_COMBO) != 0;
+    if (is_hold(i)) return config_live_touch_hold(i - C_HOLD) != 0;
     if (g_style.load() == STYLE_CLASSIC) return classic_control(i);
     if (ranged < 0) ranged = g_ranged.load();
     // Menu detection still controls cursor gestures and lock-on, never the visible buttons or their positions.
@@ -261,6 +272,7 @@ bool in_editor(int i, bool in_quest, int profile) {
     if (i == C_RSTICK || i == C_RSTICK_TOGGLE) return true;
     if (i == C_HDPAD) return config_live_touch_controls() != TOUCH_OFF && config_live_touch_show(TB_DPAD);
     if (is_combo(i)) return config_live_touch_combo(profile, i - C_COMBO) != 0;
+    if (is_hold(i)) return config_live_touch_hold(i - C_HOLD) != 0;
     if (g_style.load() == STYLE_CLASSIC) return in_mode(i, false, in_quest, 0);
     return in_mode(i, false, in_quest, ranged_layout_profile(profile));
 }
@@ -298,6 +310,7 @@ uint64_t ranged_buttons(int c, int drawn, int ranged) {
 const int ICON_CONTROLS[TOUCH_ICON_BUTTON_COUNT] = {
     C_HEAVY, C_LIGHT, C_DODGE, C_SHEATHE, C_R, C_L, C_ZL, C_ZR, C_MENU, C_HMINUS, C_MAP, C_R3,
     C_HDPAD, C_DPAD_TOGGLE, C_STICK, C_SETTINGS, C_COMBO, C_COMBO+1, C_COMBO+2, C_COMBO+3, C_COMBO+4, C_COMBO+5,
+    C_HOLD, C_HOLD+1, C_HOLD+2, C_HOLD+3, C_HOLD+4, C_HOLD+5,
     C_AMMO_UP, C_AMMO_DOWN, C_LOCK
 };
 const struct { Icon icon; const char *name; } BUILTIN_ICONS[] = {
@@ -447,7 +460,7 @@ bool save_layout_file(const Layout &l, const char *path, const char *name = null
     snprintf(temp, sizeof temp, "%s.tmp", path);
     FILE *f = fopen(temp, "w");
     if (!f) { fprintf(stderr, "[touch] could not save %s\n", path); return false; }
-    fprintf(f, "layout_version 5\n");
+    fprintf(f, "layout_version 6\n");
     if (name) fprintf(f, "template_name %s\n", name);
     fprintf(f, "# touch controls: name, centre (screen heights from its edge and the bottom), size\n");
     for (int i = 0; i < C_LAID; i++) fprintf(f, "%s %.4f %.4f %.3f\n", DEFS[i].key, l.x[i], l.y[i], l.scale[i]);
@@ -462,6 +475,10 @@ bool save_layout_file(const Layout &l, const char *path, const char *name = null
         fprintf(f, "combo_mask %d %u\n", i + 1, config_combo_mask(combos->touch_weapon_combo[UNIVERSAL_LAYOUT][i]));
         fprintf(f, "combo_pad %d %d\n", i + 1, combos->touch_weapon_combo_pad[UNIVERSAL_LAYOUT][i]);
         fprintf(f, "combo_name %d %s\n", i + 1, combos->touch_combo_name[i]);
+    }
+    if (combos) for (int i = 0; i < TOUCH_HOLDS; ++i) {
+        fprintf(f, "hold_mask %d %u\n", i + 1, config_combo_mask(combos->touch_hold[i]));
+        fprintf(f, "hold_name %d %s\n", i + 1, combos->touch_hold_name[i]);
     }
     bool ok = fflush(f) == 0 && !ferror(f);
     if (fclose(f)) ok = false;
@@ -500,6 +517,7 @@ bool load_layout_file(Layout *out, const char *path, char *name = nullptr, Confi
         if (!strcmp(line, "layout_version 3")) { version = 3; continue; }
         if (!strcmp(line, "layout_version 4")) { version = 4; continue; }
         if (!strcmp(line, "layout_version 5")) { version = 5; continue; }
+        if (!strcmp(line, "layout_version 6")) { version = 6; continue; }
         if (!strncmp(line, "icon ", 5)) {
             int choice;
             char hash[65], extra;
@@ -547,6 +565,19 @@ bool load_layout_file(Layout *out, const char *path, char *name = nullptr, Confi
             names[index - 1] = true;
             continue;
         }
+        if (combos && sscanf(line, "hold_mask %d %u %c", &index, &mask, &extra) == 2 &&
+                index >= 1 && index <= TOUCH_HOLDS && mask <= 0xffff) {
+            char binding[128];
+            config_combo_text(mask, binding, sizeof binding);
+            if (strlen(binding) < sizeof combos->touch_hold[0])
+                SDL_strlcpy(combos->touch_hold[index - 1], binding, sizeof combos->touch_hold[0]);
+            continue;
+        }
+        if (combos && sscanf(line, "hold_name %d%n", &index, &at) == 1 && at > 0 && line[at] == ' ' &&
+                index >= 1 && index <= TOUCH_HOLDS && strlen(line + at + 1) < TOUCH_HOLD_NAME_MAX) {
+            SDL_utf8strlcpy(combos->touch_hold_name[index - 1], line + at + 1, TOUCH_HOLD_NAME_MAX);
+            continue;
+        }
         float x, y, scale;
         if (sscanf(line, "%31s", key) != 1) continue;
         if (!strcmp(key, "hud_map") || !strcmp(key, "editor_panel")) {
@@ -578,11 +609,13 @@ bool load_layout_file(Layout *out, const char *path, char *name = nullptr, Confi
     bool ok = !ferror(f) && version && !invalid_icon && !invalid_editor && (!name || named);
     fclose(f);
     for (int i = 0; i < C_LAID; ++i)
-        if (version >= 5 || i < C_RSTICK_TOGGLE) ok = ok && controls[i];
+        if (is_hold(i)) { if (version >= 6) ok = ok && controls[i]; }  // (older saves have no hold positions)
+        else if (version >= 5 || i < C_RSTICK_TOGGLE) ok = ok && controls[i];
     for (int k = 0; k < TZ_MAP; ++k) ok = ok && zones[k];
     if (version >= 4) ok = ok && zones[TZ_MAP] && editor_present;
     if (version >= 2) for (int i : ICON_CONTROLS) {
         if (i == C_LOCK && version < 5) continue;
+        if (is_hold(i)) { if (version >= 6) ok = ok && icons[i]; continue; }  // (newer icons: not in older saves)
         if (version >= 3 || !is_ammo(i)) ok = ok && icons[i];
     }
     if (combos) {
@@ -1023,6 +1056,8 @@ struct State {
     bool hint_said;           // (the "another long press shows them" line has been shown once this session)
     bool hint_first;
     uint64_t hint_until;      // (the line's last moment)
+    bool hold_latched[TOUCH_HOLDS];   // ([Touch] Hold*: tapped once, its buttons stay down until tapped again)
+    bool hold_other_down[TOUCH_HOLDS]; // ([Touch] Hold*: another button went down while latched: let go on its release)
 };
 int control_profile(const State &) { return UNIVERSAL_LAYOUT; }
 int display_ranged(const State &) { return 0; }
@@ -1292,6 +1327,21 @@ void recompute_held(State &s) {
             if (f.kind == F_BUTTON) s.held |= finger_buttons(f);
             if (item_gesture(f) && f.bar_open) s.held |= B(BTN_L);
         }
+    // [Touch] Hold*: a latched button keeps its buttons down. Another button pressed meanwhile makes it let go when
+    // that button is released. Two latched buttons never cancel each other. "Another" is any finger actually holding
+    // a game button (a real X press counts even if the latch also holds X).
+    for (int k = 0; k < TOUCH_HOLDS; k++) {
+        if (!s.hold_latched[k]) continue;
+        uint32_t m = config_live_touch_hold(k);
+        if (!m) { s.hold_latched[k] = false; continue; }
+        s.held |= (uint64_t)m;
+        bool other = false;
+        for (const Finger &f : s.f)
+            if (!f.done && ((f.kind == F_BUTTON && finger_buttons(f)) || (item_gesture(f) && f.bar_open)))
+                { other = true; break; }
+        if (other) s.hold_other_down[k] = true;
+        else if (s.hold_other_down[k]) s.hold_latched[k] = false, s.hold_other_down[k] = false;
+    }
 }
 
 void release_dpad(State &s) {
@@ -1666,6 +1716,18 @@ extern "C" bool touch_event(const SDL_Event *e) {
             return true; // A live Art panel owns invisible button padding; visible controls keep priority.
         } else if (c >= 0) {
             f->kind = F_BUTTON, f->ctl = c, f->part = part;
+            if (is_hold(c)) {
+                // [Touch] Hold*: a tap toggles the latch now; a tap on itself lets go at once, and other buttons pressed
+                // while latched let go when released (recompute_held). The finger is done: it never holds a button itself.
+                int k = c - C_HOLD;
+                s.hold_latched[k] = !s.hold_latched[k];
+                s.hold_other_down[k] = false;
+                f->done = true;
+                fprintf(stderr, "[touch] hold %d %s\n", k + 1, s.hold_latched[k] ? "on" : "off");
+                tap_due();
+                recompute_held(s);
+                return true;
+            }
             if (c == C_DPAD_TOGGLE) {
                 config_toggle_touch_dpad();
                 if (!config_live_touch_show(TB_DPAD)) release_dpad(s);
@@ -1847,6 +1909,10 @@ extern "C" bool touch_event(const SDL_Event *e) {
     return true;
 }
 
+// (defined with the wheel bridge below; touch_input needs it under g_lock to know a mod's wheel owns a finger)
+static int wheel_pointer_locked(float *out_x, float *out_y);
+static SDL_AtomicInt g_wheel_mode;  // (0 off, 1 the game's wheel, 2 its editor: see touch_wheel_area)
+
 extern "C" uint64_t touch_input(bool pad_connected, bool typing, uint64_t *buttons, int *lx, int *ly, int *rx, int *ry,
                                 float *cam_dx, float *cam_dy) {
     TapAfterUnlock tap_after;  // (declared first: it runs after the lock is released)
@@ -1856,6 +1922,22 @@ extern "C" uint64_t touch_input(bool pad_connected, bool typing, uint64_t *butto
     ensure_loaded(s);
     s.typing = typing;
     s.art_rx = s.art_ry = 0;
+    // (a mod's wheel has a finger on it: that touch is the wheel's, so nothing the controls make of it reaches the game.
+    //  The fingers still run the state machine below, so touch_first_finger and touch_wheel_pointer keep seeing them:
+    //  only the game-facing outputs are put back on the way out.)
+    struct GameOut {
+        uint64_t *b; int *lx, *ly, *rx, *ry; float *cdx, *cdy;
+        uint64_t b0; int lx0, ly0, rx0, ry0; float cdx0, cdy0; bool own;
+        ~GameOut() {
+            if (!own) return;
+            if (b) *b = b0;
+            if (lx) *lx = lx0; if (ly) *ly = ly0; if (rx) *rx = rx0; if (ry) *ry = ry0;
+            if (cdx) *cdx = cdx0; if (cdy) *cdy = cdy0;
+        }
+    } out{buttons, lx, ly, rx, ry, cam_dx, cam_dy,
+          buttons ? *buttons : 0, lx ? *lx : 0, ly ? *ly : 0, rx ? *rx : 0, ry ? *ry : 0,
+          cam_dx ? *cam_dx : 0.0f, cam_dy ? *cam_dy : 0.0f, false};
+    out.own = SDL_GetAtomicInt(&g_wheel_mode) == 2 && wheel_pointer_locked(NULL, NULL) != 0;  // (computed under g_lock, before any game output is written)
     uint64_t now = SDL_GetTicksNS();
     bool menu = overlay_menu_open();
     if (menu || typing || s.edit) menuptr_mix_cancel();
@@ -1962,6 +2044,7 @@ extern "C" uint64_t touch_input(bool pad_connected, bool typing, uint64_t *butto
             if (f.kind == F_BUTTON || f.kind == F_STICK || f.kind == F_RSTICK) f.kind = F_NONE;
         s.stick_on = false;
         s.held = 0;
+        for (int k = 0; k < TOUCH_HOLDS; k++) s.hold_latched[k] = s.hold_other_down[k] = false;  // (no stuck buttons)
         for (Pulse &p : s.pulse) if (!p.art) p.until = 0;
     }
     // (hidden, by a controller or by Off: the settings button alone stays, or a phone without a controller had no way
@@ -2117,10 +2200,76 @@ extern "C" uint64_t touch_input(bool pad_connected, bool typing, uint64_t *butto
 }
 
 extern "C" bool touch_visible(void) { return g_visible; }
+// The picture's point of a window pixel (mx, my), in the game's 1280x720 HUD canvas: the picture is fitted into the
+// window by its shape (g_render_aspect) and centred, and the HUD canvas (g_ui_anchor_aspect wide at most) is what
+// 0..1279 spans. The same mapping forge.c window_to_screen uses, so a mod's forge_input_getTouch and the mouse agree.
+static bool touch_window_to_canvas(float mx, float my, float ww, float wh, float *x, float *y) {
+    if (ww <= 0 || wh <= 0) return false;
+    float asp = g_render_aspect > 0 ? g_render_aspect : 16.0f / 9.0f;
+    float pw = ww, ph = wh;  // (the picture's size in the window: the largest that fits)
+    if (pw / ph > asp) pw = ph * asp;
+    else ph = pw / asp;
+    float u = (mx - (ww - pw) / 2) / pw, v = (my - (wh - ph) / 2) / ph;
+    if (u < 0 || u >= 1 || v < 0 || v >= 1) return false;  // (outside the picture: no finger on the screen)
+    float anchor = g_ui_anchor_aspect > 0 && g_ui_anchor_aspect < asp ? g_ui_anchor_aspect : asp;
+    float canvas = anchor / asp;  // (the canvas's share of the picture's width)
+    u = fminf(fmaxf((u - (1 - canvas) / 2) / canvas, 0.0f), 1.0f);
+    *x = fminf(floorf(u * 1280.0f), 1279.0f);  // (Forge's are whole screen pixels)
+    *y = fminf(floorf(v * 720.0f), 719.0f);
+    return true;
+}
+extern "C" bool touch_first_finger(float *x, float *y) {  // (Forge's forge_input_getTouch: 1280x720 canvas pixels)
+    std::lock_guard<std::mutex> l(g_lock);
+    State &s = g_s;
+    if (!g_visible || s.w <= 0 || s.h <= 0) return false;  // (controls not running / size unknown: no finger to give)
+    for (Finger &f : s.f) {
+        if (f.kind == F_NONE) continue;  // (a lifted finger's slot is reset to F_NONE: this one is still down)
+        if (x) *x = f.x * 1280.0f / s.w;  // (pixels -> the game's 1280x720 canvas)
+        if (y) *y = f.y * 720.0f / s.h;
+        return true;
+    }
+    return false;
+}
 extern "C" void touch_art_axes(int *rx, int *ry) {
     std::lock_guard<std::mutex> l(g_lock);
     if (rx) *rx = g_s.art_rx;
     if (ry) *ry = g_s.art_ry;
+}
+// (the wheel bridge: a mod's wheel area, in the game's 1280x720 canvas units; 0 off)
+static float g_wheel_x, g_wheel_y, g_wheel_r;
+extern "C" void touch_wheel_area(int mode, float x, float y, float radius) {
+    g_wheel_x = x, g_wheel_y = y, g_wheel_r = radius;
+    SDL_SetAtomicInt(&g_wheel_mode, mode);  // (last, so a reader never sees a new mode with old coordinates)
+}
+// The finger that is on the wheel area, in canvas units. Caller holds g_lock. Returns 0/1/2 as touch_wheel_pointer.
+static int wheel_pointer_locked(float *out_x, float *out_y) {
+    int mode = SDL_GetAtomicInt(&g_wheel_mode);
+    if (mode == 0) return 0;
+    State &s = g_s;
+    if (s.w <= 0 || s.h <= 0) return 0;
+    // (both modes hand the mod the first finger down, in canvas units: the in-game wheel takes a finger anywhere and
+    //  slides it around the ring, and the editor spreads its buttons over the whole canvas. The radius is the mod's
+    //  own hit test, not the port's.)
+    for (Finger &f : s.f) {
+        if (f.kind == F_NONE) continue;
+        float cx = 0, cy = 0;
+        if (!touch_window_to_canvas(f.x, f.y, s.w, s.h, &cx, &cy)) continue;
+        if (out_x) *out_x = cx;
+        if (out_y) *out_y = cy;
+        return 1;
+    }
+    return 0;
+}
+extern "C" int touch_wheel_pointer(float *x, float *y) {
+    std::lock_guard<std::mutex> l(g_lock);
+    return wheel_pointer_locked(x, y);
+}
+extern "C" bool touch_wheel_capturing(void) {
+    std::lock_guard<std::mutex> l(g_lock);
+    // (only the wheel's editor keeps the touch controls off the game. The in-game wheel leaves the camera as it is: the
+    //  camera turning while its bag is open is its own matter, and the port's touch look is not what it is reading.)
+    if (SDL_GetAtomicInt(&g_wheel_mode) != 2) return false;
+    return wheel_pointer_locked(NULL, NULL) != 0;
 }
 extern "C" bool touch_drawn(void) {
     MenuGeom pause;
@@ -2145,7 +2294,11 @@ extern "C" const char *touch_icon_button_name(int button) {
     if (button < 0 || button >= TOUCH_ICON_BUTTON_COUNT) return "";
     static const char *const combo_names[] = {"Combined button 1", "Combined button 2", "Combined button 3",
         "Combined button 4", "Combined button 5", "Combined button 6"};
-    return button >= 16 && button < 16 + TOUCH_COMBOS ? combo_names[button - 16] : DEFS[ICON_CONTROLS[button]].name;
+    static const char *const hold_names[] = {"Hold button 1", "Hold button 2", "Hold button 3",
+        "Hold button 4", "Hold button 5", "Hold button 6"};
+    if (button >= 16 && button < 16 + TOUCH_COMBOS) return combo_names[button - 16];
+    if (button >= 16 + TOUCH_COMBOS && button < 16 + TOUCH_COMBOS + TOUCH_HOLDS) return hold_names[button - 16 - TOUCH_COMBOS];
+    return DEFS[ICON_CONTROLS[button]].name;
 }
 extern "C" int touch_icon_builtin_count(void) { return BUILTIN_ICON_COUNT; }
 extern "C" const char *touch_icon_builtin_name(int choice) {
@@ -2278,6 +2431,7 @@ static void reset_touch_input(State &s) {
     s.ammo_hold = s.ammo_ready = s.bar_since = 0;
     s.ammo_pulse = {};
     s.ammo_arrow_source = s.item_arrow_source = false;
+    for (int k = 0; k < TOUCH_HOLDS; k++) s.hold_latched[k] = s.hold_other_down[k] = false;  // (no stuck buttons)
 }
 
 extern "C" void touch_reset(void) {
@@ -3048,6 +3202,11 @@ void combo_label(int i, int profile, char *out, size_t size) {
     config_live_touch_combo_name(i - C_COMBO, out, size);
     if (!out[0]) config_combo_text(config_live_touch_combo(profile, i - C_COMBO), out, size);
 }
+void hold_label(int i, char *out, size_t size) {
+    if (!size) return;
+    config_live_touch_hold_name(i - C_HOLD, out, size);
+    if (!out[0]) config_combo_text(config_live_touch_hold(i - C_HOLD), out, size);
+}
 
 // What a ranged control shows: the weapon profile in a hunt or the fixed bowgun-style preset outside it, and its drawn state
 void ranged_face(int i, int ranged, int drawn, Icon *ic, char *letter, size_t size) {
@@ -3099,6 +3258,44 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
                                   : is_dpad(i) ? f.part : 1;
             if (i == C_HEAVY && f.ctl == C_LIGHT && f.part) mask |= 1;  // (the seam between them: both lit)
         }
+    if (is_hold(i)) {
+        // [Touch] Hold*: the same disc as other buttons, its game buttons shown inside (a custom icon, else the
+        // combination's letters, e.g. "X"). A latched button is told from a free one by a filled gold face + a small
+        // lock at the corner; with a custom icon the buttons go to the usual corner badge, like a normal button.
+        int k = i - C_HOLD;
+        bool latched = k >= 0 && k < TOUCH_HOLDS && s.hold_latched[k];
+        uint32_t hm = k >= 0 && k < TOUCH_HOLDS ? config_live_touch_hold(k) : 0;
+        char mask_text[TOUCH_HOLD_NAME_MAX], badge_letters[32];
+        config_combo_text(hm, mask_text, sizeof mask_text);
+        SDL_strlcpy(badge_letters, mask_text, sizeof badge_letters);
+        float r = latched ? g.r * .95f : g.r;
+        disc(dl, g.c, r, latched, a);
+        if (latched) dl->AddCircle(g.c, r * .8f, fade(GOLD, a * .55f), 40, std::max(1.f, g.r * .04f));
+        bool custom = i < C_LAID && l.icons[i].choice && (l.icons[i].choice > 0 || icon_texture(l.icons[i].hash));
+        if (custom) {
+            custom_icon(dl, l.icons[i], g.c, r, fade(mask ? GLOW : INK, a), a);
+            if (badge_letters[0]) badge(dl, font, ImVec2(g.c.x + r * .7f, g.c.y + r * .7f), r * .3f, badge_letters, a);
+        } else if (mask_text[0]) {
+            float fs = r * (strlen(mask_text) > 1 ? .55f : 1.05f);
+            ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, mask_text);
+            if (ts.x > r * 1.55f) fs *= r * 1.55f / ts.x, ts = font->CalcTextSizeA(fs, FLT_MAX, 0, mask_text);
+            dl->AddText(font, fs, ImVec2(g.c.x - ts.x * .5f + fs * .04f, g.c.y - ts.y * .5f + fs * .05f), fade(IM_COL32(0, 0, 0, 255), a * .7f), mask_text);
+            dl->AddText(font, fs, ImVec2(g.c.x - ts.x * .5f, g.c.y - ts.y * .52f), fade(latched ? GLOW : INK, a), mask_text);
+        } else if (!latched) {
+            dl->AddCircle(g.c, r * .82f, fade(INK, a * .5f), 40, std::max(1.f, g.r * .03f));
+        }
+        if (latched) {  // (a small padlock at the top-left corner, so the content is never covered)
+            ImU32 gold = fade(GOLD, a);
+            ImVec2 pc(g.c.x - r * .7f, g.c.y - r * .7f);
+            float pr = r * .3f;
+            dl->AddCircleFilled(pc, pr * 1.05f, fade(IM_COL32(18, 12, 9, 255), a), 20);
+            dl->AddCircle(pc, pr * 1.05f, gold, 20, pr * .12f);
+            dl->AddRectFilled(ImVec2(pc.x - pr * .45f, pc.y - pr * .05f), ImVec2(pc.x + pr * .45f, pc.y + pr * .6f), gold, pr * .18f);
+            dl->PathArcTo(ImVec2(pc.x, pc.y - pr * .1f), pr * .32f, -3.1415926f, 0.0f, 12);
+            dl->PathStroke(gold, 0, pr * .16f);
+        }
+        return;
+    }
     if (i < C_LAID && l.icons[i].choice) {
         // Probe the custom asset before replacing the native face, so fallback is visually identical.
         bool available = l.icons[i].choice > 0 || icon_texture(l.icons[i].hash);
@@ -3285,7 +3482,8 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
         // would be under it); the selected one's size on the other side
         char own[TOUCH_COMBO_NAME_MAX];
         if (is_combo(i)) combo_label(i, control_profile(s), own, sizeof own);
-        const char *t = is_combo(i) ? own : s.layout.style == STYLE_CLASSIC && DEFS[i].buttons ? DEFS[i].letter : T(DEFS[i].name);
+        else if (is_hold(i)) hold_label(i, own, sizeof own);
+        const char *t = is_combo(i) || is_hold(i) ? own : s.layout.style == STYLE_CLASSIC && DEFS[i].buttons ? DEFS[i].letter : T(DEFS[i].name);
         float fs = .024f * h;
         ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, t);
         float side = from_right(s.layout, i) ? -1.0f : 1.0f, tx = g.c.x + side * (g.r * 1.3f + ts.x * .5f);

@@ -19,6 +19,15 @@ uint64_t touch_input(bool pad_connected, bool typing, uint64_t *buttons, int *lx
                      float *cam_dx, float *cam_dy);
 bool touch_virtual_right_stick_active(void);  // the virtual stick's axes are native right-stick input (the game's camera handler consumes them)
 void touch_art_axes(int *rx, int *ry);  // the axes this call's Hunter Art pulses added; not manual camera input
+// Forge's forge_input_getTouch: the finger that is down, in the game's 1280x720 screen pixels.
+// Returns false when no finger is down (or the touch controls are not running).
+bool touch_first_finger(float *x, float *y);
+// The wheel bridge (forge_wheel_setInputArea / forge_wheel_getPointer): the mod tells the port where its wheel is (mode
+// 0 off, 1 the game's wheel, 2 its editor; x, y, radius in the 1280x720 canvas), and the port hands it the finger that
+// is on that wheel. touch_wheel_pointer returns 0 no finger, 1 a finger on the wheel (its canvas point), 2 cancelled.
+void touch_wheel_area(int mode, float x, float y, float radius);
+int touch_wheel_pointer(float *x, float *y);
+bool touch_wheel_capturing(void);  // (a wheel area is set and a finger of theirs is on it: the controls keep to themselves)
 // game thread (runtime/overlay.cpp): drawn over the game, under the port's menus
 bool touch_visible(void);
 bool touch_drawn(void);  // (something of them is on the screen: the settings button alone, when they are hidden)
@@ -30,7 +39,7 @@ enum { TOUCH_TEMPLATE_COUNT = 40, TOUCH_TEMPLATE_NAME_MAX = 64 };
 bool touch_template_info(int slot, char *name, int name_size); // false for empty or invalid slots (0..39)
 bool touch_template_save(int slot, const char *name); // snapshot the current layout, including an editor draft
 bool touch_template_use(int slot); // save and apply the snapshot; unavailable during layout editing
-enum { TOUCH_ICON_BUTTON_COUNT = 25, TOUCH_ICON_HASH_SIZE = 65 };
+enum { TOUCH_ICON_BUTTON_COUNT = 31, TOUCH_ICON_HASH_SIZE = 65 };
 // Icon choice: 0 default, 1..builtin_count built-in, -1 immutable custom image.
 const char *touch_icon_button_name(int button);
 int touch_icon_builtin_count(void);

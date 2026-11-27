@@ -39,7 +39,7 @@ extern "C" bool vk_low_memory_device(void);  // (nvn/vulkan/textures.c)
 #include <vector>
 
 namespace {
-enum class View { Main, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, Actions, TouchButtons, TouchTemplates, TemplateDetail, TemplateChanges, TemplateOverwrite, ComboEdit, TouchIcons, TouchIconEdit,
+enum class View { Main, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, Actions, TouchButtons, TouchTemplates, TemplateDetail, TemplateChanges, TemplateOverwrite, ComboEdit, TouchIcons, TouchIconEdit, HoldEdit,
                   PadList, PadMap };
 enum class Command { None, Save };
 struct Row {
@@ -2216,6 +2216,8 @@ void reset_section() {
         memcpy(c.touch_weapon_combo, f.touch_weapon_combo, sizeof c.touch_weapon_combo);
         memcpy(c.touch_weapon_combo_pad, f.touch_weapon_combo_pad, sizeof c.touch_weapon_combo_pad);
         memcpy(c.touch_combo_name, f.touch_combo_name, sizeof c.touch_combo_name);
+        memcpy(c.touch_hold, f.touch_hold, sizeof c.touch_hold);
+        memcpy(c.touch_hold_name, f.touch_hold_name, sizeof c.touch_hold_name);
         SDL_strlcpy(c.chat_key, f.chat_key, sizeof c.chat_key);
         memcpy(c.binds, f.binds, sizeof c.binds);
         break;
@@ -3230,6 +3232,19 @@ void set_touch_combo(int index, uint32_t mask) {
     SDL_strlcpy(binding, value, capacity);
     s.error.clear();
 }
+int s_hold;  // the hold button being edited
+void set_touch_hold(int index, uint32_t mask) {
+    char value[128];
+    config_combo_text(mask, value, sizeof value);
+    char *binding = s.draft.touch_hold[index];
+    size_t capacity = sizeof s.draft.touch_hold[index];
+    if (strlen(value) >= capacity) {
+        s.error = tr("This combination is too long. Remove a button before adding another.");
+        return;
+    }
+    SDL_strlcpy(binding, value, capacity);
+    s.error.clear();
+}
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
     const int profile = TOUCH_UNIVERSAL_PROFILE;
@@ -3248,6 +3263,16 @@ void touch_button_rows(std::vector<Row> &r) {
         });
         r.back().value = c.touch_weapon_combo[profile][k][0] ? c.touch_weapon_combo[profile][k] : tr("Empty");
         r.back().help = tr("The universal layout has six combined buttons. A template saves each button's combination, controller binding and name.");
+    }
+    header(r, "th.head", tr("Hold buttons"));
+    for (int k = 0; k < TOUCH_HOLDS; k++) {
+        const char *name = c.touch_hold_name[k];
+        action(r, "th." + std::to_string(k), name[strspn(name, " \t")] ? name : fmt("Hold %d", k + 1), [k]() {
+            s_hold = k;
+            push(View::HoldEdit, "he.name");
+        });
+        r.back().value = c.touch_hold[k][0] ? c.touch_hold[k] : tr("Empty");
+        r.back().help = tr("Tap this button in a hunt to hold its game buttons down without keeping a finger on it; tap it again to let go. Tapping another button lets go when that button is released. A template saves each button's buttons and name.");
     }
     action(r, "tb.back", tr("Back"), []() { pop(); });
 }
@@ -3386,6 +3411,33 @@ void combo_rows(std::vector<Row> &r) {
     });
     action(r, "ce.back", tr("Back"), []() { pop(); });
 }
+void hold_rows(std::vector<Row> &r) {
+    static const char *const NAMES[16] = {"A", "B", "X", "Y", "L3", "R3", "L", "R", "ZL", "ZR", "Plus", "Minus", "Left", "Up", "Right", "Down"};
+    static const int ORDER[16] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 13, 15, 12, 14, 4, 5};  // (the face buttons first)
+    Config &c = s.draft;
+    int k = s_hold;
+    const std::string name_key = "Hold" + std::to_string(k + 1) + "Name";
+    const char *name = c.touch_hold_name[k];
+    text(r, "he.name", "Button name", c.touch_hold_name[k], sizeof c.touch_hold_name[k],
+         name[strspn(name, " \t")] ? name : tr("Default"), name_key.c_str());
+    r.back().help = tr("A custom name shown on this hold button. Leave it empty to show the button names. Names are saved in custom templates.");
+    uint32_t mask = config_combo_mask(c.touch_hold[k]);
+    for (int n = 0; n < 16; n++) {
+        int b = ORDER[n];
+        Row row;
+        row.id = "he." + std::to_string(n);
+        row.title = tr(NAMES[b]);
+        row.toggle = mask >> b & 1;
+        row.activate = [k, b, mask]() { set_touch_hold(k, mask ^ 1u << b); };
+        row.adjust = [k, b, mask](int d) { set_touch_hold(k, d > 0 ? mask | 1u << b : mask & ~(1u << b)); };
+        r.push_back(std::move(row));
+    }
+    action(r, "he.clear", tr("Clear"), [k]() {
+        s.draft.touch_hold[k][0] = 0;
+        s.draft.touch_hold_name[k][0] = 0;
+    });
+    action(r, "he.back", tr("Back"), []() { pop(); });
+}
 // Mapping a controller (runtime/padmap.c): the list of those connected, then its steps
 void pad_list_rows(std::vector<Row> &r) {
     padmap_watch();
@@ -3489,6 +3541,7 @@ std::vector<Row> rows_for_view(bool *open) {
     if (s.view == View::TouchIcons) { touch_icon_rows(r); return r; }
     if (s.view == View::TouchIconEdit) { touch_icon_edit_rows(r); return r; }
     if (s.view == View::ComboEdit) { combo_rows(r); return r; }
+    if (s.view == View::HoldEdit) { hold_rows(r); return r; }
     if (s.view == View::PadList) { pad_list_rows(r); return r; }
     if (s.view == View::PadMap) { pad_map_rows(r); return r; }
     if (s.view == View::Keyboard) {
@@ -4323,6 +4376,7 @@ std::string view_title() {
                     : s.view == View::TouchIcons || s.view == View::TouchIconEdit ? "Touch button icons"
                     : s.view == View::TemplateOverwrite ? "Replace this saved template?"
                     : s.view == View::ComboEdit  ? "Combined button"
+                    : s.view == View::HoldEdit   ? "Hold button"
                     : s.view == View::PadList    ? "Map a controller"
                     : s.view == View::PadMap     ? "Map a controller"
                     : s.view == View::KeyCapture ? "Press the key for chat (Esc: cancel)"

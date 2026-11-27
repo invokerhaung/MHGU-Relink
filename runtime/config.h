@@ -42,6 +42,8 @@ enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, T
 #define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0}
 #define TOUCH_COMBOS 6
 #define TOUCH_COMBO_NAME_MAX 64
+#define TOUCH_HOLDS 6                        // [Touch] Hold1..: buttons that hold their game buttons down until tapped again
+#define TOUCH_HOLD_NAME_MAX 64
 #define TOUCH_WEAPON_LAYOUTS 15
 #define TOUCH_LEGACY_LAYOUTS 4
 #define TOUCH_UNIVERSAL_PROFILE (TOUCH_WEAPON_LAYOUTS + TOUCH_LEGACY_LAYOUTS)
@@ -193,6 +195,10 @@ typedef struct {
     char touch_combo_name[TOUCH_COMBOS][TOUCH_COMBO_NAME_MAX];  // [Touch] Combo1Name..: empty uses the button names
     char touch_weapon_combo[TOUCH_LAYOUT_PROFILES][TOUCH_COMBOS][32];
     int touch_weapon_combo_pad[TOUCH_LAYOUT_PROFILES][TOUCH_COMBOS];
+    // [Touch] Hold1..: one screen button that, tapped once, holds the game's buttons down (config_combo_mask) until it is
+    // tapped again, or until another button tapped meanwhile is released. "" none.
+    char touch_hold[TOUCH_HOLDS][32];
+    char touch_hold_name[TOUCH_HOLDS][TOUCH_HOLD_NAME_MAX];  // [Touch] Hold1Name..: empty shows the button names
     int show_fps;             // [Performance] ShowFPS: the frame rate in a box on the screen (runtime/overlay.cpp)
     int menu_chord;           // [Controls] MenuChord: Plus + Minus together open the settings menu (runtime/host_input.c)
     int kbm_prompts;          // [Controls] KeyboardPrompts: the game's button glyphs show keys and mouse buttons (hle/prompts.c)
@@ -376,6 +382,8 @@ void config_set_touch_profile(int profile);
 uint32_t config_live_touch_combo(int profile, int index);   // per-layout buttons (config_combo_mask)
 int config_live_touch_combo_pad(int profile, int index);    // per-layout PADB_*
 void config_live_touch_combo_name(int index, char *out, size_t size);  // UTF-8 copy; empty uses the button names
+uint32_t config_live_touch_hold(int index);                 // [Touch] Hold1..: the game's buttons held down (config_combo_mask)
+void config_live_touch_hold_name(int index, char *out, size_t size);  // UTF-8 copy; empty shows the button names
 float config_live_touch_camera(void);
 float config_live_touch_opacity(void);
 int config_live_touch_vibration(void);  // [Touch] Vibration

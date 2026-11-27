@@ -35,7 +35,8 @@ static SDL_AtomicInt live_fps, live_fov, live_mouse, live_draw = {0x3f800000}, l
                      live_shadows = {1}, live_bloom = {1}, live_reverb = {1}, live_hud_size = {100}, live_effects = {1}, live_upscale_filter = {0},
                      live_fsr_sharpness, live_fsr_reactive, live_village, live_ldn_port, live_sync_zako, live_ldn_direct, live_bonus,
                      live_friend_requests = {1}, live_friend_online_notices, live_friend_hub_notices,
-                     audio_output, live_hold_send = {1}, live_send_all, live_supply_wait, live_damage_numbers;
+                     audio_output, live_hold_send = {1}, live_send_all, live_supply_wait, live_damage_numbers,
+                     live_touch_hold[TOUCH_HOLDS];
 static SDL_AtomicInt live_kerning, live_bold;
 // [HDR]
 static SDL_AtomicInt live_hdr, live_hdr_format, live_hdr_gamma = {HDR_GAMMA_22}, live_hdr_tonemap = {HDR_TONEMAP_RENODRT};
@@ -64,6 +65,7 @@ static HpScale live_hp;
 static Config live_crossplay;  // protected by live_ldn_lock
 static SDL_SpinLock live_touch_name_lock;
 static char live_touch_combo_name[TOUCH_COMBOS][TOUCH_COMBO_NAME_MAX];
+static char live_touch_hold_name[TOUCH_HOLDS][TOUCH_HOLD_NAME_MAX];
 // A save updates changed hot fields only. Saving the volume must not silently
 // remove an unchanged FOV/FPS override supplied by the development environment.
 static void publish_live(const Config *c, bool all) {
@@ -124,10 +126,16 @@ static void publish_live(const Config *c, bool all) {
             SDL_SetAtomicInt(&live_touch_combo[profile][i], (int)config_combo_mask(c->touch_weapon_combo[profile][i]));
             SDL_SetAtomicInt(&live_touch_combo_pad[profile][i], c->touch_weapon_combo_pad[profile][i]);
         }
+    for (int i = 0; i < TOUCH_HOLDS; i++)
+        SDL_SetAtomicInt(&live_touch_hold[i], (int)config_combo_mask(c->touch_hold[i]));
     SDL_LockSpinlock(&live_touch_name_lock);
     for (int i = 0; i < TOUCH_COMBOS; i++) {
         const char *name = c->touch_combo_name[i];
         SDL_utf8strlcpy(live_touch_combo_name[i], name[strspn(name, " \t")] ? name : "", sizeof live_touch_combo_name[i]);
+    }
+    for (int i = 0; i < TOUCH_HOLDS; i++) {
+        const char *name = c->touch_hold_name[i];
+        SDL_utf8strlcpy(live_touch_hold_name[i], name[strspn(name, " \t")] ? name : "", sizeof live_touch_hold_name[i]);
     }
     SDL_UnlockSpinlock(&live_touch_name_lock);
     if (all || c->lock_on != saved.lock_on) SDL_SetAtomicInt(&live_lock_on, c->lock_on);
@@ -329,6 +337,18 @@ void config_live_touch_combo_name(int index, char *out, size_t size) {
     SDL_utf8strlcpy(out, live_touch_combo_name[index], size);
     SDL_UnlockSpinlock(&live_touch_name_lock);
 }
+uint32_t config_live_touch_hold(int index) {
+    if (index < 0 || index >= TOUCH_HOLDS) return 0;
+    return (uint32_t)SDL_GetAtomicInt(&live_touch_hold[index]);
+}
+void config_live_touch_hold_name(int index, char *out, size_t size) {
+    if (!out || !size) return;
+    out[0] = 0;
+    if (index < 0 || index >= TOUCH_HOLDS) return;
+    SDL_LockSpinlock(&live_touch_name_lock);
+    SDL_utf8strlcpy(out, live_touch_hold_name[index], size);
+    SDL_UnlockSpinlock(&live_touch_name_lock);
+}
 
 // The names of a combined button's parts, in BTN_* order (hle/input.h)
 static const char *const COMBO_NAMES[16] = {"A", "B", "X", "Y", "L3", "R3", "L", "R", "ZL", "ZR", "Plus", "Minus", "Left", "Up", "Right", "Down"};
@@ -464,7 +484,7 @@ bool config_validate(const Config *c, char *error, size_t size) {
 
 // What config_save writes: a setting of the table (setting) or a Quest<number> entry (setting NULL)
 typedef struct { const ConfigSetting *setting; const char *section; char key[64], value[256]; bool seen; } Entry;
-#define ENTRY_MAX (HP_QUESTS_MAX + 448 + TOUCH_COMBOS)  // settings, combo display names, and the quest overrides
+#define ENTRY_MAX (HP_QUESTS_MAX + 448 + TOUCH_COMBOS + TOUCH_HOLDS)  // settings, combo & hold display names, and the quest overrides
 static void normalize(const char *s, char *out, size_t size) {
     size_t n = 0;
     for (; *s && n + 1 < size; s++)

@@ -34,6 +34,7 @@
 #include "interp.h"
 #include "mods.h"
 #include "overlay.h"
+#include "touch.h"
 
 #define FORGE_MAJOR 2
 #define FORGE_MINOR 0
@@ -1011,6 +1012,7 @@ static void input_frame(void) {
     const bool *k = SDL_GetKeyboardState(&n);
     for (int i = 0; i < 256; i++) keys_now[i] = k && i < n ? k[i] : 0;
     touch_down = mouse_touch(&touch_x, &touch_y);
+    if (!touch_down) touch_down = touch_first_finger(&touch_x, &touch_y);  // (no mouse left button: the real finger)
     mouse_frame();
     pressed_key = host_input_key_take();  // (also with Forge's menu open: a mod's keybind menu is in it)
 }

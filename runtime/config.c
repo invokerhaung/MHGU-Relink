@@ -138,6 +138,8 @@
     .touch_combo = {"", "", "", "", "", ""},                                                        \
     .touch_combo_pad = {0, 0, 0, 0, 0, 0},                                                          \
     .touch_combo_name = {"", "", "", "", "", ""},                                                   \
+    .touch_hold = {"", "", "", "", "", ""},                                                         \
+    .touch_hold_name = {"", "", "", "", "", ""},                                                    \
     /* [Mouse] */                                                                                   \
     .mouse_sensitivity = 1.0f,                                                                      \
     .mouse_sensitivity_y = 1.0f,                                                                    \
@@ -609,6 +611,21 @@ static const char DEFAULT_INI[] =
     "; ComboNName: a display name; empty uses the combined button names\n"
     "; The universal layout uses UniversalCombo1..6; other layout keys remain for compatibility\n"
     "; Custom templates save all six Universal combinations, controller bindings and display names\n"
+    "; HoldN: one screen button that, tapped once, holds its game's buttons down until tapped again (a tap of another\n"
+    ";   button cancels it when that button is released). A+X sets two; empty hides the button.\n"
+    "; HoldNName: a display name; empty shows the button names\n"
+    "Hold1 =\n"
+    "Hold1Name =\n"
+    "Hold2 =\n"
+    "Hold2Name =\n"
+    "Hold3 =\n"
+    "Hold3Name =\n"
+    "Hold4 =\n"
+    "Hold4Name =\n"
+    "Hold5 =\n"
+    "Hold5Name =\n"
+    "Hold6 =\n"
+    "Hold6Name =\n"
 #define DEFAULT_LAYOUT_COMBOS(name) \
     name "Combo1 =\n" name "Combo1Pad = None\n" name "Combo2 =\n" name "Combo2Pad = None\n" \
     name "Combo3 =\n" name "Combo3Pad = None\n" name "Combo4 =\n" name "Combo4Pad = None\n" \
@@ -1182,6 +1199,10 @@ const ConfigSetting g_settings[] = {
      "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad", NULL, false, ERR_MISC}, \
     {"Touch", "Combo" #n "Name", SET_TEXT, F(touch_combo_name[n - 1]), sizeof g_config.touch_combo_name[0], 0, 0, NULL, NULL, false, ERR_COMBO_NAME}
     COMBO(1), COMBO(2), COMBO(3), COMBO(4), COMBO(5), COMBO(6),
+#define HOLD(n) {"Touch", "Hold" #n, SET_TEXT, F(touch_hold[n - 1]), sizeof g_config.touch_hold[0], 0, 0, NULL, NULL, false, ERR_MISC}, \
+    {"Touch", "Hold" #n "Name", SET_TEXT, F(touch_hold_name[n - 1]), sizeof g_config.touch_hold_name[0], 0, 0, NULL, NULL, false, ERR_COMBO_NAME}
+    HOLD(1), HOLD(2), HOLD(3), HOLD(4), HOLD(5), HOLD(6),
+#undef HOLD
 #define WEAPON_COMBO(profile, name, n) {"Touch", name "Combo" #n, SET_TEXT, F(touch_weapon_combo[profile][n - 1]), sizeof g_config.touch_weapon_combo[0][0], 0, 0, NULL, NULL, false, ERR_MISC}, \
     {"Touch", name "Combo" #n "Pad", SET_CHOICE, F(touch_weapon_combo_pad[profile][n - 1]), 0, 0, 0, \
      "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad", NULL, false, ERR_MISC}
@@ -1413,6 +1434,9 @@ bool config_parse(const ConfigSetting *s, const char *value, Config *c) {
     case SET_TEXT:  // (as written: host names keep their dashes)
         if (s->field >= offsetof(Config, touch_combo_name) &&
             s->field < offsetof(Config, touch_combo_name) + sizeof c->touch_combo_name)
+            SDL_utf8strlcpy((char *)c + s->field, value, s->field2);
+        else if (s->field >= offsetof(Config, touch_hold_name) &&
+                 s->field < offsetof(Config, touch_hold_name) + sizeof c->touch_hold_name)
             SDL_utf8strlcpy((char *)c + s->field, value, s->field2);
         else snprintf((char *)c + s->field, s->field2, "%s", value);
         return true;
