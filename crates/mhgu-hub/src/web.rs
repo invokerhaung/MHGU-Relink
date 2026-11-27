@@ -49,6 +49,16 @@ fn t(l: Lang, key: &str) -> &'static str {
     let (en, zh, es) = match key {
         "hubs" => s!("hubs", "房间", "salas"),
         "players" => s!("players", "玩家", "jugadores"),
+        "room name" => s!("room name", "房间名", "nombre de la sala"),
+        "quest" => s!("quest", "任务", "misión"),
+        "password" => s!("password", "密码", "contraseña"),
+        "unnamed" => s!("unnamed", "未命名", "sin nombre"),
+        "in quest" => s!("in quest", "任务中", "en misión"),
+        "hunter search" => s!("hunter search", "猎人搜索", "búsqueda de cazadores"),
+        "hunter searches" => s!("Hunter Search", "猎人搜索", "Búsqueda de cazadores"),
+        "room idle" => s!("Room idle", "房间空闲", "Sala libre"),
+        "quest elapsed" => s!("in quest", "已出发", "en misión"),
+        "unknown quest" => s!("Unknown quest", "未知任务", "Misión desconocida"),
         "connections" => s!("connections", "连接数", "conexiones"),
         "uptime" => s!("uptime", "运行时长", "tiempo activo"),
         "hub" => s!("hub", "房间", "sala"),
@@ -61,6 +71,7 @@ fn t(l: Lang, key: &str) -> &'static str {
         "key room" => s!("key", "Key 房间", "sala con Key"),
         "phone room" => s!("phone only", "仅手机", "solo Android"),
         "waiting" => s!("waiting", "等待中", "esperando"),
+        "full" => s!("full", "已满", "completa"),
         "no hubs" => s!("No hubs right now.", "当前没有房间。", "Ahora no hay salas."),
         "traffic" => s!("traffic", "流量", "tráfico"),
         "kick" => s!("Kick", "踢出", "Expulsar"),
@@ -97,6 +108,8 @@ fn t(l: Lang, key: &str) -> &'static str {
         "unban" => s!("Unban", "解封", "Desbloquear"),
         "ban ip" => s!("Ban an IP address", "封禁 IP 地址", "Bloquear una dirección IP"),        "settings" => s!("Live settings", "热设置", "Ajustes en vivo"),
         "min protocol" => s!("Oldest link protocol", "最低链路协议", "Protocolo de enlace mínimo"),
+        "max protocol" => s!("Newest link protocol (0: any)", "最高链路协议（0：不限）", "Protocolo de enlace máximo (0: cualquiera)"),
+        "link pool" => s!("Link protocols that play together (low-high, or off)", "互通链路协议（低-高，或 off）", "Protocolos que juegan juntos (bajo-alto, o off)"),
         "separate phones" => s!("Android public room separate", "Android 公共房间独立", "Sala pública Android separada"),
         "verbose" => s!("Verbose logs", "详细日志", "Registros detallados"),
         "max connections" => s!("Max connections", "最大连接数", "Conexiones máximas"),
@@ -109,6 +122,33 @@ fn t(l: Lang, key: &str) -> &'static str {
         "request burst" => s!("Request burst", "请求突发", "Ráfaga de solicitudes"),
         "bandwidth" => s!("Bandwidth (bytes/s)", "带宽（字节/秒）", "Ancho de banda (bytes/s)"),
         "save" => s!("Save", "保存", "Guardar"),
+        "federation peers" => s!("Federation peers", "联邦对端", "Servidores federados"),
+        "peer" => s!("Peer", "对端", "Par"),
+        "online" => s!("online", "在线", "en línea"),
+        "offline" => s!("offline", "离线", "desconectado"),
+        "latency" => s!("Latency", "延迟", "Latencia"),
+        "error" => s!("Error", "错误", "Error"),
+        "no peers" => s!("No federation peers configured.", "未配置联邦对端。", "No hay servidores federados."),
+        "federated joins" => s!("federated joins", "联邦加入", "uniones federadas"),
+        "federated traffic" => s!("federated traffic", "联邦流量", "tráfico federado"),
+        "discovered peers" => s!("Discovered peers (LAN)", "发现的联邦候选（局域网）", "Servidores descubiertos (LAN)"),
+        "discovery hint" => s!(
+            "Candidates only: nothing is joined automatically. Add the address to -federate and the id to -federation-allow on both servers to federate.",
+            "仅列出候选，不会自动并入。两端把地址加入 -federate、把 ID 加入 -federation-allow 后才会联邦。",
+            "Solo candidatos: no se une nada automáticamente. Añade la dirección a -federate y el id a -federation-allow en ambos servidores."
+        ),
+        "address" => s!("Address", "地址", "Dirección"),
+        "configured" => s!("Configured", "已配置", "Configurado"),
+        "no candidates" => s!("No LAN candidates heard yet.", "尚未收到局域网候选。", "Aún no hay candidatos en la LAN."),
+        "approve" => s!("Approve", "批准", "Aprobar"),
+        "approved" => s!("Approved", "已批准", "Aprobado"),
+        "candidate approved" => s!(
+            "Candidate approved and saved. The other server must approve this one too for its hubs to be listed.",
+            "候选已批准并保存。对端服务器也需要批准本服，才能列出它的集会所。",
+            "Candidato aprobado y guardado. El otro servidor también debe aprobar a este para listar sus salas."
+        ),
+        "yes" => s!("yes", "是", "sí"),
+        "no" => s!("no", "否", "no"),
         "applied" => s!("Settings applied.", "设置已应用。", "Ajustes aplicados."),
         "invalid settings" => s!("Invalid settings.", "设置无效。", "Ajustes no válidos."),
 
@@ -231,6 +271,9 @@ impl Web {
         let reply: (u16, &'static str, String) = match (method, path) {
             ("GET", "/") => (200, "text/html; charset=utf-8", self.public_page(lang)),
             ("GET", "/api/hubs") => (200, "application/json; charset=utf-8", self.api()),
+            ("GET", "/.well-known/mhgu-federation") => {
+                (200, "application/json; charset=utf-8", self.shared.lock().unwrap().well_known())
+            }
             ("GET", "/admin") => {
                 if token_ok {
                     (200, "text/html; charset=utf-8", self.admin_page(lang))
@@ -242,6 +285,23 @@ impl Web {
                 if token_ok {
                     let only = q("only").unwrap_or_default();
                     (200, "text/html; charset=utf-8", self.log_page(lang, &only))
+                } else {
+                    (401, "text/html; charset=utf-8", layout(lang, "admin", &login(lang), true))
+                }
+            }
+            ("POST", "/admin/approve") => {
+                if token_ok {
+                    let id = kv(&body_str(&body), "id").unwrap_or_default();
+                    let msg = match self.shared.lock().unwrap().approve_candidate(&id) {
+                        Ok(()) => format!("<p class=ok>{}</p>", t(lang, "candidate approved")),
+                        Err(e) => format!("<p class=err>{}</p>", html(&e)),
+                    };
+                    let page = format!(
+                        "{msg}<p><a href=\"/admin?token={}\">← {}</a></p>",
+                        self.token,
+                        t(lang, "admin")
+                    );
+                    (200, "text/html; charset=utf-8", layout(lang, "admin", &page, true))
                 } else {
                     (401, "text/html; charset=utf-8", layout(lang, "admin", &login(lang), true))
                 }
@@ -383,35 +443,76 @@ impl Web {
 
     fn public_page(&self, l: Lang) -> String {
         let v = self.view();
+        let rooms: Vec<&crate::server::HubView> = v.hubs.iter().filter(|h| !h.hunter_search).collect();
+        let searches: Vec<&crate::server::HubView> = v.hubs.iter().filter(|h| h.hunter_search).collect();
         let mut rows = String::new();
-        for (i, h) in v.hubs.iter().enumerate() {
+        for (i, h) in rooms.iter().enumerate() {
             let public = h.room == [0u8; 4];
             let phone = h.room == proto::room_from_key("public-phone")[..4];
             let keyed = !public && !phone;
-            rows.push_str(&format!(
-                "<tr><td>{} {}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                t(l, "room"), i + 1,
-                h.players,
-                if keyed { format!("<span class=warn>🔒 {}</span>", t(l, "key room")) }
+            let count = if h.count > 0 { h.count as usize } else { h.players };
+            let max = if h.max > 0 { h.max } else { 4 };
+            let names = h.names.iter().map(|n| html(n)).collect::<Vec<_>>().join(", ");
+            let room = if h.room_name.is_empty() { t(l, "unnamed").to_string() } else { html(&h.room_name) };
+            let quest = quest_label(h, l);
+            let elapsed = h.quest_age.map(|s| format!("<br><small>{} {}</small>", t(l, "quest elapsed"), secs(s))).unwrap_or_default();
+            let pass = h.passcode.map(|p| format!("#{:04}", p)).unwrap_or_else(|| "—".into());
+            let access = if keyed { format!("<span class=warn>🔒 {}</span>", t(l, "key room")) }
                 else if phone { format!("<span class=warn>📱 {}</span>", t(l, "phone room")) }
-                else { format!("<span class=ok>🌐 {}</span>", t(l, "public room")) },
-                if h.players > 1 { format!("<span class=ok>{}</span>", t(l, "open")) } else { format!("<span class=warn>{}</span>", t(l, "waiting")) }
+                else { format!("<span class=ok>🌐 {}</span>", t(l, "public room")) };
+            let status = if count >= max as usize {
+                format!("<span class=warn>{}</span>", t(l, "full"))
+            } else if count > 1 {
+                format!("<span class=ok>{}</span>", t(l, "open"))
+            } else {
+                format!("<span class=warn>{}</span>", t(l, "waiting"))
+            };
+            rows.push_str(&format!(
+                "<tr><td><b>{}</b><br><small>{} {} · link {}</small></td><td>{} {}<br><small>{}</small></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                room, t(l, "room"), i + 1, h.link_proto,
+                count, format!("/{max}"), names, format!("{quest}{elapsed}"), pass, access, status
             ));
         }
         if rows.is_empty() {
-            rows = format!("<tr><td colspan=4>{}</td></tr>", t(l, "no hubs"));
+            rows = format!("<tr><td colspan=6>{}</td></tr>", t(l, "no hubs"));
         }
+        let mut search_rows = String::new();
+        for h in &searches {
+            let count = if h.count > 0 { h.count as usize } else { h.players };
+            let max = if h.max > 0 { h.max } else { 2 };
+            let public = h.room == [0u8; 4];
+            let phone = h.room == proto::room_from_key("public-phone")[..4];
+            let access = if public { format!("<span class=ok>🌐 {}</span>", t(l, "public room")) }
+                else if phone { format!("<span class=warn>📱 {}</span>", t(l, "phone room")) }
+                else { format!("<span class=warn>🔒 {}</span>", t(l, "key room")) };
+            let status = if count >= max as usize { format!("<span class=warn>{}</span>", t(l, "full")) }
+                else if count > 1 { format!("<span class=ok>{}</span>", t(l, "open")) }
+                else { format!("<span class=warn>{}</span>", t(l, "waiting")) };
+            search_rows.push_str(&format!(
+                "<tr><td>{}</td><td>{} / {}</td><td>{}</td><td>{}</td></tr>",
+                h.link_proto, count, max, access, status
+            ));
+        }
+        let search_block = if search_rows.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<h2>{}</h2><table><tr><th>Link</th><th>{}</th><th>{}</th><th>{}</th></tr>{}</table>",
+                t(l, "hunter searches"), t(l, "players"), t(l, "access"), t(l, "status"), search_rows
+            )
+        };
         let body = format!(
             r#"<div class=stats>
 <div class=stat><b>{}</b>{}</div><div class=stat><b>{}</b>{}</div>
 <div class=stat><b>{}</b>{}</div><div class=stat><b>{}</b>{}</div>
 <div class=stat><b>{}</b>{}</div></div>
-<table><tr><th>{}</th><th>{}</th><th>{}</th><th>{}</th></tr>{rows}</table>
+<table><tr><th>{}</th><th>{}</th><th>{}</th><th>{}</th><th>{}</th><th>{}</th></tr>{rows}</table>
+{}
 <p style="color:#9a8a76">{}</p>"#,
-            v.hubs.len(), t(l, "hubs"), v.players, t(l, "players"),
-            v.conns, t(l, "connections"), uptime(v.uptime), t(l, "uptime"), traffic(v.bytes), t(l, "traffic"),
-            t(l, "room"), t(l, "players"), t(l, "access"), t(l, "status"),
-            t(l, "refresh")
+            rooms.len(), t(l, "hubs"), v.players, t(l, "players"),
+            searches.len(), t(l, "hunter searches"), v.conns, t(l, "connections"), uptime(v.uptime), t(l, "uptime"),
+            t(l, "room name"), t(l, "players"), t(l, "quest"), t(l, "password"), t(l, "access"), t(l, "status"),
+            search_block, t(l, "refresh")
         );
         layout(l, "hubs", &body, false)
     }
@@ -471,6 +572,46 @@ impl Web {
         if player_rows.is_empty() {
             player_rows = format!("<tr><td colspan=7>{}</td></tr>", t(l, "no players"));
         }
+        let mut peer_rows = String::new();
+        for p in &v.peers {
+            peer_rows.push_str(&format!(
+                "<tr><td>{}</td><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                html(&p.name),
+                html(&p.addr),
+                if p.online { t(l, "online") } else { t(l, "offline") },
+                p.hubs,
+                if p.rtt_ms > 0 { format!("{} ms", p.rtt_ms) } else { "-".into() },
+                html(p.last_error.as_deref().unwrap_or(""))
+            ));
+        }
+        if peer_rows.is_empty() {
+            peer_rows = format!("<tr><td colspan=6>{}</td></tr>", t(l, "no peers"));
+        }
+        let mut candidate_rows = String::new();
+        for c in &v.candidates {
+            let action = if c.configured {
+                t(l, "approved").to_string()
+            } else {
+                format!(
+                    r#"<form method=post action="/admin/approve?token={}" style="margin:0"><input type=hidden name=id value="{}"><button>{}</button></form>"#,
+                    self.token,
+                    html(&c.id),
+                    t(l, "approve")
+                )
+            };
+            candidate_rows.push_str(&format!(
+                "<tr><td>{}</td><td><code>{}</code></td><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                html(&c.name),
+                html(&c.id),
+                html(&c.addr),
+                secs(c.age),
+                if c.configured { t(l, "yes") } else { t(l, "no") },
+                action
+            ));
+        }
+        if candidate_rows.is_empty() {
+            candidate_rows = format!("<tr><td colspan=5>{}</td></tr>", t(l, "no candidates"));
+        }
         let body = format!(
             r#"<div class=stats>
 <div class=stat><b>{}</b>{}</div><div class=stat><b>{}</b>{}</div>
@@ -481,6 +622,12 @@ impl Web {
 <p>{}</p>
 <h2>{}</h2>
 <table><tr><th>{}</th><th>{}</th><th>IP</th><th>↓</th><th>↑</th><th>{}</th><th></th></tr>{player_rows}</table>
+<h2>{}</h2>
+<table><tr><th>{}</th><th>{}</th><th>{}</th><th>{}</th><th>{}</th><th>{}</th></tr>{peer_rows}</table>
+<p style="color:#9a8a76">{} · {} {}</p>
+<h2>{}</h2>
+<p style="color:#9a8a76">{}</p>
+<table><tr><th>{}</th><th>ID</th><th>{}</th><th>{}</th><th>{}</th><th></th></tr>{candidate_rows}</table>
 <table><tr><th>{}</th><th></th></tr>{ban_rows}</table>
 {ban_form}{log_link}{settings}"#,
             v.hubs.len(), t(l, "hubs"), v.players, t(l, "players"),
@@ -493,6 +640,10 @@ impl Web {
                 None => t(l, "key public").to_string(),
             },
             t(l, "players title"), t(l, "room"), t(l, "player"), t(l, "status"),
+            t(l, "federation peers"), t(l, "peer"), t(l, "status"), t(l, "hubs"), t(l, "latency"), t(l, "error"),
+            t(l, "federated joins"), v.fed_joins, t(l, "federated traffic"), traffic(v.fed_bytes),
+            t(l, "discovered peers"), t(l, "discovery hint"),
+            t(l, "peer"), t(l, "address"), t(l, "age"), t(l, "configured"),
             t(l, "ban ip")
         );
         layout(l, "admin", &body, true)
@@ -528,22 +679,86 @@ impl Web {
 
     fn api(&self) -> String {
         let v = self.view();
-        let mut hubs = Vec::new();
+        let mut rooms = Vec::new();
+        let mut searches = Vec::new();
         for h in &v.hubs {
-            hubs.push(format!(
-                r#"{{"id":"{:#x}","players":{},"link":{},"age":{},"locked":{},"access":"{}"}}"#,
+            let names = h.names.iter().map(|n| json_str(n)).collect::<Vec<_>>().join(",");
+            let q = crate::quests::get(h.quest_id);
+            let quest_name = q.map(|q| json_str(&q.name)).unwrap_or_else(|| "null".into());
+            let quest_goal = q.map(|q| json_str(&q.goal)).unwrap_or_else(|| "null".into());
+            let quest_name_es = q.map(|q| json_str(&q.name_es)).unwrap_or_else(|| "null".into());
+            let quest_name_zh = q.map(|q| json_str(&q.name_zh)).unwrap_or_else(|| "null".into());
+            let quest_goal_es = q.map(|q| json_str(&q.goal_es)).unwrap_or_else(|| "null".into());
+            let quest_goal_zh = q.map(|q| json_str(&q.goal_zh)).unwrap_or_else(|| "null".into());
+            let quest_rank = q.map(|q| json_str(&q.rank)).unwrap_or_else(|| "null".into());
+            let quest_stars = q.map(|q| q.stars.to_string()).unwrap_or_else(|| "null".into());
+            let quest_age = h.quest_age.map(|s| s.to_string()).unwrap_or_else(|| "null".into());
+            let item = format!(
+                r#"{{"id":"{:#x}","players":{},"link":{},"age":{},"locked":{},"access":"{}","room_name":{},"names":[{}],"count":{},"max":{},"quest_id":{},"quest_name":{},"quest_name_es":{},"quest_name_zh":{},"quest_goal":{},"quest_goal_es":{},"quest_goal_zh":{},"quest_rank":{},"quest_stars":{},"in_quest":{},"quest_age":{},"passcode":{},"hunter_search":{},"full":{}}}"#,
                 h.id, h.players, h.link_proto, h.age, h.room != [0u8; 4],
-                if h.room == [0u8; 4] { "public" } else if h.room == proto::room_from_key("public-phone")[..4] { "phone" } else { "key" }
+                if h.room == [0u8; 4] { "public" } else if h.room == proto::room_from_key("public-phone")[..4] { "phone" } else { "key" },
+                json_str(&h.room_name), names, h.count, h.max, h.quest_id,
+                quest_name, quest_name_es, quest_name_zh, quest_goal, quest_goal_es, quest_goal_zh,
+                quest_rank, quest_stars, h.in_quest, quest_age,
+                h.passcode.map(|p| p.to_string()).unwrap_or_else(|| "null".into()), h.hunter_search,
+                h.count > 0 && h.count >= h.max
+            );
+            if h.hunter_search { searches.push(item); } else { rooms.push(item); }
+        }
+        let mut candidates = Vec::new();
+        for c in &v.candidates {
+            candidates.push(format!(
+                r#"{{"id":{},"name":{},"addr":{},"age":{},"configured":{},"public_key":{}}}"#,
+                json_str(&c.id), json_str(&c.name), json_str(&c.addr), c.age, c.configured,
+                json_str(&c.public_key)
+            ));
+        }
+        let mut peers = Vec::new();
+        for p in &v.peers {
+            peers.push(format!(
+                r#"{{"name":{},"addr":{},"online":{},"rtt_ms":{},"hubs":{},"error":{}}}"#,
+                json_str(&p.name), json_str(&p.addr), p.online, p.rtt_ms, p.hubs,
+                p.last_error.as_deref().map(json_str).unwrap_or_else(|| "null".into())
             ));
         }
         format!(
-            r#"{{"uptime":{},"conns":{},"players":{},"hubs":[{}]}}"#,
+            r#"{{"uptime":{},"conns":{},"players":{},"hubs":[{}],"hunter_searches":[{}],"peers":[{}],"candidates":[{}],"federated_joins":{},"federated_bytes":{},"federated_presence":{}}}"#,
             v.uptime,
             v.conns,
             v.players,
-            hubs.join(",")
+            rooms.join(","),
+            searches.join(","),
+            peers.join(","),
+            candidates.join(","),
+            v.fed_joins,
+            v.fed_bytes,
+            v.federated_presence
         )
     }
+
+}
+
+fn quest_label(h: &crate::server::HubView, l: Lang) -> String {
+    if h.hunter_search {
+        return t(l, "hunter search").to_string();
+    }
+    if !h.in_quest {
+        return t(l, "room idle").to_string();
+    }
+    let Some(q) = crate::quests::get(h.quest_id) else {
+        return if h.quest_id != 0 {
+            format!("{} #{}", t(l, "unknown quest"), h.quest_id)
+        } else {
+            t(l, "in quest").to_string()
+        };
+    };
+    let name = match l {
+        Lang::Es if !q.name_es.is_empty() => &q.name_es,
+        Lang::Zh if !q.name_zh.is_empty() => &q.name_zh,
+        Lang::Es | Lang::Zh if q.name.is_empty() => return "—".into(),
+        _ => &q.name,
+    };
+    html(name)
 }
 
 fn login(l: Lang) -> String {
@@ -604,34 +819,39 @@ fn layout_at(l: Lang, title: &str, body: &str, admin: bool, here: &str) -> Strin
 }
 
 const STYLE: &str = r#"
-:root{color-scheme:dark}
-body{font:14px/1.55 system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC",sans-serif;margin:0;background:#14100c;color:#e8ded0}
-header{padding:18px 24px;background:#241c14;border-bottom:1px solid #4a3a28}
-h1{font-size:18px;margin:0}
-h2{font-size:15px;margin:26px 0 8px;color:#d8c6a8}
-main{padding:24px;max-width:1100px;margin:auto}
-table{width:100%;border-collapse:collapse}
-th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #3a2e22}
-th{color:#b9a68e;font-weight:600}
-code{color:#f0c674}
-pre{background:#1c1610;border:1px solid #3a2e22;border-radius:8px;padding:12px;max-height:420px;overflow:auto}
-.ok{color:#8bc34a}.warn{color:#e5c07b}.stats{display:flex;gap:18px;flex-wrap:wrap;margin:0 0 18px}
-.stat{background:#241c14;border:1px solid #4a3a28;border-radius:8px;padding:10px 16px;min-width:96px}
-.stat b{display:block;font-size:20px}
-button{background:#5a3f22;color:#fff;border:0;border-radius:6px;padding:5px 12px;cursor:pointer}
-button:hover{background:#7a5630}
-a{color:#f0c674}
-input{padding:6px 10px;border-radius:6px;border:1px solid #4a3a28;background:#1c1610;color:#e8ded0}
+:root{color-scheme:light;--ink:#2c251c;--muted:#7b6a55;--line:rgba(76,52,27,.18);--paper:#fbf4e6;--forest:#2d4335;--gold:#c3984d}
+*{box-sizing:border-box}
+body{font:14px/1.55 system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC",sans-serif;margin:0;color:var(--ink);
+background:radial-gradient(900px 420px at 12% -8%,rgba(255,252,242,.85),transparent 62%),linear-gradient(135deg,#e7d4b2,#f4e8d3 45%,#ead8b9);min-height:100vh}
+header{padding:22px 28px;background:linear-gradient(115deg,#1e3026,#2d4335 55%,#3c5a48);color:#f7edda;border-bottom:4px solid var(--gold);box-shadow:0 8px 24px rgba(55,37,18,.16)}
+h1{font:600 26px/1.1 Georgia,"Times New Roman","Noto Serif CJK SC",serif;margin:0}
+h2{font:600 22px/1.2 Georgia,"Times New Roman","Noto Serif CJK SC",serif;color:var(--forest);margin:26px 0 8px}
+main{padding:24px;max-width:1180px;margin:auto}
+a{color:#8a6225}
+table{width:100%;border-collapse:separate;border-spacing:0;background:rgba(251,244,230,.88);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 12px 30px rgba(55,37,18,.10)}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:rgba(45,67,53,.08);color:var(--forest);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+tr:last-child td{border-bottom:0}
+small{color:var(--muted)}
+code{color:#8a6225}
+pre{background:#f3e5cc;border:1px solid var(--line);border-radius:10px;padding:12px;max-height:420px;overflow:auto}
+.ok{color:#4c7455}.warn{color:#963f31}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:0 0 18px}
+.stat{background:rgba(251,244,230,.9);border:1px solid var(--line);border-radius:10px;padding:10px 14px;box-shadow:0 5px 16px rgba(55,37,18,.06)}
+.stat b{display:block;font:600 22px/1.1 Georgia,serif;color:var(--forest)}
+button{background:var(--forest);color:#fff;border:1px solid #1e3026;border-radius:7px;padding:6px 13px;cursor:pointer}
+button:hover{background:#3c5a48}
+input{padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:#fffaf0;color:var(--ink)}
 .settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin:10px 0}
-.settings label{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#1c1610;border:1px solid #3a2e22;border-radius:8px;padding:8px 12px}
+.settings label{display:flex;justify-content:space-between;gap:10px;align-items:center;background:rgba(251,244,230,.86);border:1px solid var(--line);border-radius:9px;padding:8px 12px}
 .settings input[type=number]{width:96px}
 .settings button{justify-self:start}
-details.lang{position:relative}
-details.lang summary{cursor:pointer;list-style:none;padding:4px 10px;border:1px solid #4a3a28;border-radius:6px;background:#241c14}
+details.lang{position:relative;display:inline-block;margin-right:4px}
+details.lang summary{cursor:pointer;list-style:none;padding:4px 10px;border:1px solid rgba(227,194,124,.55);border-radius:999px;background:rgba(0,0,0,.14);color:#f7edda}
 details.lang summary::-webkit-details-marker{display:none}
-details.lang .menu{position:absolute;right:0;top:110%;background:#241c14;border:1px solid #4a3a28;border-radius:8px;min-width:140px;z-index:9}
-details.lang .menu a{display:block;padding:6px 12px;white-space:nowrap}
-details.lang .menu a:hover,details.lang .menu a.cur{background:#3a2e22}
+details.lang .menu{position:absolute;right:0;top:110%;background:#fbf4e6;border:1px solid var(--line);border-radius:9px;min-width:140px;z-index:9;box-shadow:0 12px 30px rgba(55,37,18,.18)}
+details.lang .menu a{display:block;padding:6px 12px;white-space:nowrap;color:var(--ink);text-decoration:none}
+details.lang .menu a:hover,details.lang .menu a.cur{background:#f3e5cc}
+@media(max-width:720px){header{padding:16px}main{padding:12px}.stats{grid-template-columns:repeat(2,1fr)}table{font-size:12px}th,td{padding:7px}}
 "#;
 
 fn html(s: &str) -> String {
@@ -645,6 +865,8 @@ fn settings_form(w: &Web, l: Lang, v: &Live) -> String {
         "<h2>{}</h2>\
          <form method=post action=\"/admin/settings?token={}\" class=settings>\
          <label>{} <input type=number name=min_proto min=0 max=65535 value=\"{}\"></label>\
+         <label>{} <input type=number name=max_proto min=0 max=65535 value=\"{}\"></label>\
+         <label>{} <input type=text name=link_pool size=6 value=\"{}\"></label>\
          <label><input type=checkbox name=separate_phones{}> {}</label>\
          <label><input type=checkbox name=verbose{}> {}</label>\
          <label>{} <input type=number name=max_conns min=1 value=\"{}\"></label>\
@@ -659,6 +881,8 @@ fn settings_form(w: &Web, l: Lang, v: &Live) -> String {
          <button>{}</button></form>",
         t(l, "settings"), w.token,
         t(l, "min protocol"), v.min_proto,
+        t(l, "max protocol"), v.max_proto,
+        t(l, "link pool"), v.pool_text(),
         check(v.separate_phones), t(l, "separate phones"),
         check(v.verbose), t(l, "verbose"),
         t(l, "max connections"), v.max_conns,
@@ -691,6 +915,13 @@ fn parse_live(body: &str, cur: &Live) -> Result<Live, String> {
     };
     let min_proto = uint("min_proto", cur.min_proto as usize)?;
     if min_proto > 65535 { return Err("min_proto: at most 65535".into()); }
+    let max_proto = uint("max_proto", cur.max_proto as usize)?;
+    if max_proto > 65535 { return Err("max_proto: at most 65535".into()); }
+    if max_proto != 0 && max_proto < min_proto { return Err("max_proto: below min_proto".into()); }
+    let link_pool = match num("link_pool") {
+        None => (cur.link_pool_low, cur.link_pool_high),
+        Some(s) => parse_pool(s.trim())?,
+    };
     let max_conns = uint("max_conns", cur.max_conns)?;
     let max_conns_per_ip = uint("max_conns_per_ip", cur.max_conns_per_ip)?;
     let max_hubs = uint("max_hubs", cur.max_hubs)?;
@@ -711,10 +942,27 @@ fn parse_live(body: &str, cur: &Live) -> Result<Live, String> {
     }
     Ok(Live {
         min_proto: min_proto as u16,
+        max_proto: max_proto as u16,
+        link_pool_low: link_pool.0,
+        link_pool_high: link_pool.1,
         separate_phones: num("separate_phones").is_some(),
         verbose: num("verbose").is_some(),
         max_conns, max_conns_per_ip, max_hubs, max_hubs_per_ip, list_max, list_search_max, req_rate, req_burst, bandwidth,
     })
+}
+
+/// "3-4" / "off" into (low, high).
+fn parse_pool(s: &str) -> Result<(u16, u16), String> {
+    if s.eq_ignore_ascii_case("off") || s.is_empty() {
+        return Ok((0, 0));
+    }
+    let (lo, hi) = s.split_once('-').ok_or("link_pool: low-high, or off")?;
+    let lo: u16 = lo.trim().parse().map_err(|_| "link_pool: not a number")?;
+    let hi: u16 = hi.trim().parse().map_err(|_| "link_pool: not a number")?;
+    if lo == 0 || hi < lo {
+        return Err("link_pool: a low of 1 or more, and a high of at least the low".into());
+    }
+    Ok((lo, hi))
 }
 
 fn kv(s: &str, key: &str) -> Option<String> {
@@ -756,6 +1004,21 @@ fn rand_u64() -> u64 {
 
 fn secs(s: u64) -> String {
     if s < 60 { format!("{s}s") } else if s < 3600 { format!("{}m", s / 60) } else { format!("{}h", s / 3600) }
+}
+
+fn json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn rate(bps: u64) -> String {

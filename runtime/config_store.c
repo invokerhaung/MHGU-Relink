@@ -26,7 +26,7 @@ static bool have_saved, runtime_ready, runtime_fsr;
 static SDL_AtomicInt volume = {100}, confirm_exit = {1}, language = {0}, mute_in_background, window_focused = {1}, show_fps, menu_chord = {1}, show_battery;
 static SDL_AtomicInt voice_mode, voice_noise, voice_mic = {100}, voice_level = {70};  // [Voice] (runtime/voice.c)
 static SDL_AtomicInt live_fps, live_fov, live_mouse, live_draw = {0x3f800000}, live_fxaa = {1}, live_msaa = {1},
-                     live_vsync = {1}, live_face, live_menu_confirm, live_background = {1}, live_combo, live_chat_key,
+                     live_vsync = {1}, live_face, live_menu_confirm, live_background = {1}, live_combo, live_chat_key, live_pause_key = {SDL_SCANCODE_PAUSE},
                      live_fxaa_mode, live_smooth, live_discord, live_discord_hunter, live_share_urgent, live_binds[BINDS][BIND_KEYS],
                      live_touch, live_touch_profile, live_touch_hud, live_touch_auto_r, live_touch_show[TB_COUNT],
                      live_touch_combo[TOUCH_LAYOUT_PROFILES][TOUCH_COMBOS], live_touch_combo_pad[TOUCH_LAYOUT_PROFILES][TOUCH_COMBOS],
@@ -34,6 +34,7 @@ static SDL_AtomicInt live_fps, live_fov, live_mouse, live_draw = {0x3f800000}, l
                      live_touch_vibration = {1}, live_phone_rumble = {1}, live_show_stats, live_pause_bg = {1},
                      live_shadows = {1}, live_bloom = {1}, live_reverb = {1}, live_hud_size = {100}, live_effects = {1}, live_upscale_filter = {0},
                      live_fsr_sharpness, live_fsr_reactive, live_village, live_ldn_port, live_sync_zako, live_ldn_direct, live_bonus,
+                     live_friend_requests = {1}, live_friend_online_notices, live_friend_hub_notices,
                      audio_output, live_hold_send = {1}, live_send_all, live_supply_wait, live_damage_numbers;
 static SDL_AtomicInt live_kerning, live_bold;
 // [HDR]
@@ -85,6 +86,8 @@ static void publish_live(const Config *c, bool all) {
     if (all || c->combo_window != saved.combo_window) SDL_SetAtomicInt(&live_combo, c->combo_window);
     if (all || strcmp(c->chat_key, saved.chat_key))
         SDL_SetAtomicInt(&live_chat_key, *c->chat_key ? (int)SDL_GetScancodeFromName(c->chat_key) : 0);
+    if (all || strcmp(c->pause_key, saved.pause_key))
+        SDL_SetAtomicInt(&live_pause_key, *c->pause_key ? (int)SDL_GetScancodeFromName(c->pause_key) : 0);
     if (all || c->fxaa_mode != saved.fxaa_mode) SDL_SetAtomicInt(&live_fxaa_mode, c->fxaa_mode);
     if (all || c->smooth_gradients != saved.smooth_gradients) SDL_SetAtomicInt(&live_smooth, c->smooth_gradients);
     if (all || c->fix_kerning != saved.fix_kerning) SDL_SetAtomicInt(&live_kerning, c->fix_kerning);
@@ -184,6 +187,12 @@ static void publish_live(const Config *c, bool all) {
     SDL_UnlockSpinlock(&live_ldn_lock);
     if (all || c->ldn_port != saved.ldn_port) SDL_SetAtomicInt(&live_ldn_port, c->ldn_port);
     if (all || c->ldn_direct != saved.ldn_direct) SDL_SetAtomicInt(&live_ldn_direct, c->ldn_direct);
+    if (all || c->ldn_friend_requests != saved.ldn_friend_requests)
+        SDL_SetAtomicInt(&live_friend_requests, c->ldn_friend_requests);
+    if (all || c->ldn_friend_online_notices != saved.ldn_friend_online_notices)
+        SDL_SetAtomicInt(&live_friend_online_notices, c->ldn_friend_online_notices);
+    if (all || c->ldn_friend_hub_notices != saved.ldn_friend_hub_notices)
+        SDL_SetAtomicInt(&live_friend_hub_notices, c->ldn_friend_hub_notices);
     if (all || c->sync_small_monsters != saved.sync_small_monsters) SDL_SetAtomicInt(&live_sync_zako, c->sync_small_monsters);
     if (all || c->lag_compensation != saved.lag_compensation) SDL_SetAtomicInt(&live_lagcomp, c->lag_compensation);
     if (all || c->bonus_content != saved.bonus_content) SDL_SetAtomicInt(&live_bonus, c->bonus_content);
@@ -230,6 +239,7 @@ int config_live_prompt_icons(void) { return SDL_GetAtomicInt(&live_prompt_icons)
 int config_live_background_input(void) { return SDL_GetAtomicInt(&live_background); }
 int config_live_combo_window(void) { return SDL_GetAtomicInt(&live_combo); }
 int config_live_chat_key(void) { return SDL_GetAtomicInt(&live_chat_key); }
+int config_live_pause_key(void) { return SDL_GetAtomicInt(&live_pause_key); }
 int config_live_fxaa_mode(void) { return SDL_GetAtomicInt(&live_fxaa_mode); }
 int config_live_smooth_gradients(void) { return SDL_GetAtomicInt(&live_smooth); }
 int config_live_fix_kerning(void) { return SDL_GetAtomicInt(&live_kerning); }
@@ -262,6 +272,9 @@ int config_live_ldn_port(void) { return SDL_GetAtomicInt(&live_ldn_port); }
 int config_live_sync_small_monsters(void) { return SDL_GetAtomicInt(&live_sync_zako); }
 int config_live_lag_compensation(void) { return SDL_GetAtomicInt(&live_lagcomp); }
 int config_live_ldn_direct(void) { return SDL_GetAtomicInt(&live_ldn_direct); }
+int config_live_friend_requests(void) { return SDL_GetAtomicInt(&live_friend_requests); }
+int config_live_friend_online_notices(void) { return SDL_GetAtomicInt(&live_friend_online_notices); }
+int config_live_friend_hub_notices(void) { return SDL_GetAtomicInt(&live_friend_hub_notices); }
 int config_live_bonus_content(void) { return SDL_GetAtomicInt(&live_bonus); }
 void config_live_ldn_join(char *join, size_t size) {
     SDL_LockSpinlock(&live_ldn_lock);

@@ -116,6 +116,9 @@ typedef struct {
     char ldn_key[64];         // [Multiplayer] Key: matchmaking key, hubs seen only by players with the same; "" public
     int ldn_direct;           // [Multiplayer] Direct: in an internet hub, game packets go straight between the players when
                               // their routers let them (hole punching; they see each other's IP address), else through the server
+    int ldn_friend_requests;  // [Multiplayer] FriendRequests: get friend requests and share the friend code in hubs (net/ldn.c)
+    int ldn_friend_online_notices;  // [Multiplayer] FriendOnlineNotices: a notice when a friend comes online (net/ldn.c)
+    int ldn_friend_hub_notices;     // [Multiplayer] FriendHubNotices: a notice when a friend opens a hub (net/ldn.c)
     int crossplay;            // [Multiplayer] Crossplay: XP_OFF, XP_RYU (Ryujinx LDN server) or XP_ROOM (suyu rooms)
     char ryu_servers[256];    // [Multiplayer] RyuServers: RyuLdn servers (host[:port], comma separated)
     int ryu_host;             // [Multiplayer] RyuHost: run the RyuLdn server in this process when hosting
@@ -127,6 +130,7 @@ typedef struct {
     char room_name[64];       // [Multiplayer] RoomName: the room's name
     char room_password[64];   // [Multiplayer] RoomPassword: the room's password (empty: open)
     char chat_key[32];        // [Controls] ChatKey: the key that opens a line of chat (runtime/hle/chat.c), by SDL's
+    char pause_key[32];       // [Controls] PauseKey: Pause/Suspend's key (runtime/pause.h), by SDL's name; "" none
                               // name for it ("/", "Y"...); "" none
     int fxaa_mode;            // [Anti-aliasing] FXAAMode: FXAA_*, which FXAA draws while FXAA is on
     int smooth_gradients;     // [Graphics] SmoothGradients: the game's RGBA8 render targets as RGBA16 (nvn/vulkan/textures.c)
@@ -308,6 +312,7 @@ int config_live_menu_confirm(void);
 int config_live_background_input(void);
 int config_live_combo_window(void);
 int config_live_chat_key(void);  // [Controls] ChatKey as an SDL scancode (0: none)
+int config_live_pause_key(void);  // [Controls] PauseKey as an SDL scancode (0: none)
 int config_live_bind(int bind, int slot);  // [Keybinds]: one of BIND_*'s keys (Config.binds, or a mod's for now)
 // A mod's keys for BIND_* for now (runtime/forge.c forge_input_setKeybind), over the settings' own; NULL: theirs again.
 // Not saved: mhgurecomp.ini and the settings menu keep the player's.
@@ -347,6 +352,9 @@ int config_live_damage_numbers(void);   // [Hunting Aids] DamageNumbers (hle/hun
 int config_live_ldn_port(void);         // [Multiplayer] Port as saved now: counts from the next hub hosted or search
 void config_live_ldn_join(char *join, size_t size);  // [Multiplayer] Join: the next search (net/ldn.c)
 int config_live_ldn_direct(void);  // [Multiplayer] Direct (net/ldn.c: for the next player link)
+int config_live_friend_requests(void);  // [Multiplayer] FriendRequests (net/ldn.c)
+int config_live_friend_online_notices(void);  // [Multiplayer] FriendOnlineNotices (net/ldn.c)
+int config_live_friend_hub_notices(void);     // [Multiplayer] FriendHubNotices (net/ldn.c)
 int config_live_sync_small_monsters(void);  // [Multiplayer] SyncSmallMonsters (net/emsync.c)
 int config_live_share_urgent(void);    // [Multiplayer] ShareUrgentCredit (hle/urgentcredit.c)
 int config_live_lag_compensation(void);  // [Multiplayer] LagCompensation (net/hitsync.c)

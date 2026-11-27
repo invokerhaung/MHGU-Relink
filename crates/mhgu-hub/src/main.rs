@@ -1,9 +1,12 @@
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use mhgu_hub::{Config, Server};
+use mhgu_hub::{Config, Live, Server};
 
 fn main() -> ExitCode {
     let cfg = parse_args();
+    let settings_file = cfg.settings_file.clone();
     let server = match Server::new(cfg.clone()) {
         Ok(s) => s,
         Err(e) => {
@@ -18,8 +21,43 @@ fn main() -> ExitCode {
     if cfg.min_proto > 0 {
         println!("mhgu-hub: refusing games older than link protocol {}", cfg.min_proto);
     }
+    if cfg.max_proto > 0 {
+        println!("mhgu-hub: refusing games newer than link protocol {}", cfg.max_proto);
+    }
+    if cfg.link_pool_low != 0 {
+        println!("mhgu-hub: link protocols {}-{} play together", cfg.link_pool_low, cfg.link_pool_high);
+    }
     if !cfg.separate_phones {
         println!("mhgu-hub: one public room: Android players' public hubs are listed with everyone's");
+    }
+    println!(
+        "mhgu-hub: federation identity {}{}",
+        server.identity_id(),
+        if cfg.identity_file.is_empty() { " (ephemeral: -identity FILE to keep it)" } else { "" }
+    );
+    if !cfg.federation_allow.is_empty() {
+        println!("mhgu-hub: accepting federated identities: {}", cfg.federation_allow.join(", "));
+    }
+    if !cfg.federation_state.is_empty() {
+        println!("mhgu-hub: admin approvals are saved in {}", cfg.federation_state);
+    }
+    if cfg.discover_lan {
+        println!("mhgu-hub: LAN discovery on UDP 39513 (candidates only, never auto-joined)");
+    }
+    if !cfg.federation_presence {
+        println!("mhgu-hub: federation presence off: friends' online states stay local");
+    }
+    if cfg.federation_transitive > 0 {
+        println!("mhgu-hub: transitive hub advertisements up to {} hop(s)", cfg.federation_transitive);
+    }
+    if !cfg.federate.is_empty() {
+        let names: Vec<String> = cfg.federate.iter().map(|p| if p.name.is_empty() { p.addr.clone() } else { p.name.clone() }).collect();
+        println!(
+            "mhgu-hub: federating with {} server(s): {}{}",
+            names.len(),
+            names.join(", "),
+            if cfg.federation_token.is_empty() { " (incoming federation off: no -federation-token)" } else { "" }
+        );
     }
     if !cfg.key.is_empty() {
         let room = mhgu_protocol::room_from_key(&cfg.key);
@@ -27,6 +65,10 @@ fn main() -> ExitCode {
             "mhgu-hub: only the room of -key is served (key {:#04x}{:02x}{:02x}{:02x}…)",
             room[0], room[1], room[2], room[3]
         );
+    }
+    let server = Arc::new(server);
+    if !settings_file.is_empty() {
+        install_reload(Arc::clone(&server), settings_file);
     }
     match server.serve() {
         Ok(()) => ExitCode::SUCCESS,
@@ -37,8 +79,108 @@ fn main() -> ExitCode {
     }
 }
 
+#[derive(Default)]
+struct FileSettings {
+    min_proto: Option<u16>,
+    max_proto: Option<u16>,
+    link_pool: Option<(u16, u16)>,
+    separate_phones: Option<bool>,
+}
+
+fn parse_pool(v: &str) -> Result<(u16, u16), String> {
+    let v = v.trim().to_ascii_lowercase();
+    if matches!(v.as_str(), "off" | "0" | "none") {
+        return Ok((0, 0));
+    }
+    let (lo, hi) = v.split_once('-').ok_or_else(|| "link-pool must be low-high, or off".to_string())?;
+    let lo: u16 = lo.trim().parse().map_err(|_| "link-pool: low must be a number".to_string())?;
+    let hi: u16 = hi.trim().parse().map_err(|_| "link-pool: high must be a number".to_string())?;
+    if lo == 0 || hi < lo {
+        return Err("link-pool must be low-high, low at most high and above zero".into());
+    }
+    Ok((lo, hi))
+}
+
+fn read_settings(path: &str) -> Result<FileSettings, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    let mut out = FileSettings::default();
+    for (n, raw) in text.lines().enumerate() {
+        let line = raw.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        let (k, v) = line.split_once('=').ok_or_else(|| format!("{path} line {}: expected key = value", n + 1))?;
+        let k = k.trim().to_ascii_lowercase();
+        let v = v.trim().to_ascii_lowercase();
+        match k.as_str() {
+            "min-proto" => out.min_proto = Some(v.parse().map_err(|_| format!("{path} line {}: min-proto must be a number", n + 1))?),
+            "max-proto" => out.max_proto = Some(v.parse().map_err(|_| format!("{path} line {}: max-proto must be a number", n + 1))?),
+            "link-pool" => out.link_pool = Some(parse_pool(&v).map_err(|e| format!("{path} line {}: {e}", n + 1))?),
+            "separate-phones" => out.separate_phones = Some(match v.as_str() {
+                "on" | "true" | "yes" | "1" => true,
+                "off" | "false" | "no" | "0" => false,
+                _ => return Err(format!("{path} line {}: separate-phones must be on or off", n + 1)),
+            }),
+            _ => return Err(format!("{path} line {}: unknown setting {k:?}", n + 1)),
+        }
+    }
+    let min = out.min_proto.unwrap_or(0);
+    if let Some(max) = out.max_proto {
+        if max != 0 && max < min {
+            return Err(format!("{path}: max-proto {} is below min-proto {min}", max));
+        }
+    }
+    Ok(out)
+}
+
+impl FileSettings {
+    fn apply_config(&self, c: &mut Config) {
+        if let Some(v) = self.min_proto { c.min_proto = v; }
+        if let Some(v) = self.max_proto { c.max_proto = v; }
+        if let Some(v) = self.link_pool { c.link_pool_low = v.0; c.link_pool_high = v.1; }
+        if let Some(v) = self.separate_phones { c.separate_phones = v; }
+    }
+    fn apply_live(&self, c: &mut Live) {
+        if let Some(v) = self.min_proto { c.min_proto = v; }
+        if let Some(v) = self.max_proto { c.max_proto = v; }
+        if let Some(v) = self.link_pool { c.link_pool_low = v.0; c.link_pool_high = v.1; }
+        if let Some(v) = self.separate_phones { c.separate_phones = v; }
+    }
+}
+
+static HUP: AtomicBool = AtomicBool::new(false);
+extern "C" fn on_hup(_: libc::c_int) { HUP.store(true, Ordering::Relaxed); }
+
+fn install_reload(server: Arc<Server>, path: String) {
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGHUP, on_hup as *const () as libc::sighandler_t);
+    }
+    #[cfg(unix)]
+    std::thread::spawn(move || loop {
+        if HUP.swap(false, Ordering::Relaxed) {
+            match read_settings(&path) {
+                Ok(f) => {
+                    let mut live = server.live();
+                    f.apply_live(&mut live);
+                    let shown = live.clone();
+                    let closed = server.apply(live);
+                    println!("mhgu-hub: reloaded {path} (min-proto {}, max-proto {}, link-pool {}, separate-phones {}; {closed} hub(s) closed)",
+                        shown.min_proto, shown.max_proto, shown.pool_text(), shown.separate_phones);
+                }
+                Err(e) => eprintln!("mhgu-hub: settings unchanged: {e}"),
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    });
+    #[cfg(not(unix))]
+    let _ = (server, path);
+}
+
 fn parse_args() -> Config {
     let mut cfg = Config::default();
+    cfg.identity_file = "mhgu-hub.identity".into();
+    cfg.federation_state = "mhgu-hub.federation".into();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -50,11 +192,29 @@ fn parse_args() -> Config {
             "-list-max" => cfg.list_max = number(&mut args, "-list-max"),
             "-list-search-max" => cfg.list_search_max = number(&mut args, "-list-search-max"),
             "-min-proto" => cfg.min_proto = number(&mut args, "-min-proto"),
+            "-max-proto" => cfg.max_proto = number(&mut args, "-max-proto"),
+            "-link-pool" => match args.next().as_deref() {
+                Some("off") => cfg.link_pool_low = 0,
+                Some(v) => {
+                    let (lo, hi) = v.split_once('-').expect("-link-pool must be low-high, or off");
+                    cfg.link_pool_low = lo.parse().expect("-link-pool: low must be a number");
+                    cfg.link_pool_high = hi.parse().expect("-link-pool: high must be a number");
+                }
+                None => panic!("-link-pool needs a value"),
+            },
+            "-max-presence" => cfg.max_presence = number(&mut args, "-max-presence"),
+            "-presence-ttl" => {
+                let secs: u64 = number(&mut args, "-presence-ttl");
+                cfg.presence_ttl = std::time::Duration::from_secs(secs.max(1));
+            }
             "-separate-phones" => {
                 cfg.separate_phones = match args.next().as_deref() {
                     Some("false") | Some("0") | Some("off") => false,
                     _ => true,
                 };
+            }
+            a if a.starts_with("-separate-phones=") => {
+                cfg.separate_phones = !matches!(&a["-separate-phones=".len()..], "false" | "0" | "off");
             }
             "-bandwidth" => {
                 cfg.bandwidth = args
@@ -67,13 +227,73 @@ fn parse_args() -> Config {
             "-web" => cfg.web = args.next().expect("-web needs a value"),
             "-web-token" => cfg.web_token = args.next().expect("-web-token needs a value"),
             "-key" => cfg.key = args.next().expect("-key needs a value"),
+            "-federation-token" => cfg.federation_token = args.next().expect("-federation-token needs a value"),
+            "-federation-name" => cfg.federation_name = args.next().expect("-federation-name needs a value"),
+            "-identity" => cfg.identity_file = args.next().expect("-identity needs a value"),
+            "-federation-state" => cfg.federation_state = args.next().expect("-federation-state needs a value"),
+            "-advertise" => cfg.advertise = args.next().expect("-advertise needs a value"),
+            "-federation-allow" => {
+                let v = args.next().expect("-federation-allow needs a value");
+                for id in v.split(',') {
+                    if !id.trim().is_empty() {
+                        cfg.federation_allow.push(id.trim().to_string());
+                    }
+                }
+            }
+            "-discover" => {
+                let v = args.next().unwrap_or_default();
+                cfg.discover_lan = v == "lan" || v == "on";
+            }
+            "-federation-transitive" => {
+                cfg.federation_transitive = match args.next().as_deref() {
+                    Some("off") | Some("0") | None => 0,
+                    Some(v) => v.parse().unwrap_or(1),
+                };
+            }
+            "-federation-presence" => {
+                cfg.federation_presence = !matches!(
+                    args.next().as_deref(),
+                    Some("false") | Some("0") | Some("off")
+                );
+            }
+            a if a.starts_with("-federation-presence=") => {
+                cfg.federation_presence =
+                    !matches!(&a["-federation-presence=".len()..], "false" | "0" | "off");
+            }
+            "-federate" => {
+                let v = args.next().expect("-federate needs a value");
+                let mut it = v.splitn(3, ',');
+                let addr = it.next().unwrap_or_default().trim().to_string();
+                let second = it.next().unwrap_or_default().trim().to_string();
+                let name = it.next().unwrap_or_default().to_string();
+                if addr.is_empty() {
+                    eprintln!("mhgu-hub: -federate needs addr[,token_or_key[,name]]");
+                    std::process::exit(2);
+                }
+                let (token, key) = if second.starts_with("ed25519:") {
+                    (String::new(), second)
+                } else {
+                    (second, String::new())
+                };
+                cfg.federate.push(mhgu_hub::Peer { addr, token, name, key });
+            }
             "-web-dir" => cfg.web_dir = args.next().expect("-web-dir needs a value"),
+            "-settings" => cfg.settings_file = args.next().expect("-settings needs a value"),
             "-h" | "--help" => {
                 print_help();
                 std::process::exit(0);
             }
             other => {
                 eprintln!("mhgu-hub: unknown argument {other} (try --help)");
+                std::process::exit(2);
+            }
+        }
+    }
+    if !cfg.settings_file.is_empty() {
+        match read_settings(&cfg.settings_file) {
+            Ok(f) => f.apply_config(&mut cfg),
+            Err(e) => {
+                eprintln!("mhgu-hub: {e}");
                 std::process::exit(2);
             }
         }
@@ -105,14 +325,44 @@ Usage: mhgu-hub [options]\n\
 \
   -min-proto N          oldest link protocol served; older games are refused (default 0: any)
 \
+  -max-proto N          newest link protocol served; newer games are refused (default 100; 0: no newest)
+\
+  -link-pool LOW-HIGH   link protocols that play together, e.g. 3-4 (default), or off
+\
+  -max-presence N       players online the friends list keeps (default 20000)
+\
+  -presence-ttl SECS    friend online TTL after the last poll (default 90)
+\
   -separate-phones[=false]  Android public hubs in their own room (default on; =false: one public room)\n\
   -v, --verbose         log hubs and joins (never IP addresses)\n\
   -web ADDR             web UI address (default :39511, off: none)\n\
   -web-token TOKEN      the token /admin needs (default: random, printed at startup)\n\
   -web-dir DIR          serve your own web UI from DIR (index.html, admin.html, log.html, assets)\n\
-  -key KEY              only serve the matchmaking room of KEY (default: any, public room included)\n\
+  -settings FILE        min-proto, max-proto, link-pool and separate-phones; read at start and on SIGHUP\n\
+  -key KEY              only serve the matchmaking room of KEY (default: any, public room included)
+\
+  -federation-token T   accept federation from servers that prove token T (default: off)
+\
+  -federate ADDR[,TOKEN_OR_ID[,NAME]]  share hubs with this server (repeatable; default port 39510)
+\
+  -federation-name NAME our name in peers' logs (default: the address)
+\
+  -federation-allow ID  accept this Ed25519 server id (repeatable; '*' = any valid key)
+\
+  -identity FILE        Ed25519 seed (default mhgu-hub.identity; empty: ephemeral)
+\
+  -federation-state FILE  approvals from the admin page (default mhgu-hub.federation)
+\
+  -advertise HOST:PORT  address published in /.well-known/mhgu-federation
+\
+  -discover lan         announce/collect LAN federation candidates (never auto-join)
+\
+  -federation-presence[=false]  share online friends with peers (default on)
+\
+  -federation-transitive N  advertise hubs up to N hops away (default 0; joins relay through peers)
+\
   -h, --help            this help\n\
 \n\
-Wire-compatible with gu-native and MHGURecomp clients."
+Online support: MHGURecomp clients."
     );
 }

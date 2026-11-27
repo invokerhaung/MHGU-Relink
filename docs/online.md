@@ -45,16 +45,65 @@ cd build && ./mhgu-relink <游戏目录>
 | 模式 | 做法 |
 |---|---|
 | 局域网 | 主机建房（日志 `[ldn] hosting via mhgu-link on port N`），其他玩家“搜索房间”或 `[Multiplayer] Join = <IP>:<port>` |
-| 互联网（hub 服务器） | 跑 `./target/release/mhgu-hub -addr :39510`；所有玩家 `[Multiplayer] Server = <服务器>:39510`、相同 `Key`；主机建房会自动注册为 hub，其他人从列表进入，服务器只做中转 |
+| 互联网（hub 服务器） | 跑 `./target/release/mhgu-hub -addr :39510`；所有玩家 `[Multiplayer] Server = <服务器>:39510`、相同 `Key`；主机建房会自动注册为 hub，其他人从列表进入，服务器只做中转。只服务 Recomp 时加 `-min-proto 3`（2 及更早的 gu-native 会被拒绝） |
 
 传输层全部在 `crates/mhgu-link*`：主机/加入/中继、TCP/UDP 链路、踢人、NetworkInfo 广播。C 运行时只保留
 `nn::ldn` 的 HLE 包装、局域网扫描（Android 的组播锁与逐网卡探测）以及 hub 列表/检查的控制协议。
 
-链路协议为 **v3**（上游 0.15 起）。`mhgu-hub` 额外支持：
+链路协议为 **v4**（上游 0.19 起），与旧版 **Recomp v3** 互通：link 帧不变，4 只增加 hub 服务器的能力，主机会接受任一版本的
+Hello，局域网探测按对方版本回应；对方是 v3 主机时按 v3 说。协议 4 的内容：
 
-- `-min-proto N`：拒绝更旧的链路协议（默认 0 = 不限）；
-- `-separate-phones[=false]`：`false` 时 Android 的公共房间与 PC 公共房间合并；
+- **集会所代码（session code）**：主机为每个集会所生成 8 字符代码（Crockford base32，无 I/L/O/U），随 `HOST`
+  列出；被别的集会所占用时服务器返回 `errCodeTaken`（6），主机换一个重试；同一集会所（session id + BSSID）
+  重新列出会取回原代码。设置菜单 → 网络可看到并分享，`ABCD-EFGH` 形式。
+- **按代码加入**：`FIND`（请求 7）按代码找 hub，不论房间；该 hub 10 分钟内排在“加入集会所”列表首位，
+  加入时带上代码即可跨房间进入（代码即邀请）。Discord Rich Presence 的 Join secret 也用它，只接受本机服务器。
+- **好友（PRESENCE，请求 8 / 应答 22）**：安装身份为存档目录的 `friends-id.bin`（32 字节随机数），好友代码
+  为 `SHA-256("MHGURecomp friend:" + secret)` 前 10 字节（显示 16 字符）。`friends.txt` 保存好友与已删除列表。
+  服务器只在内存中保留最后 90 秒在线状态；互为好友才互见在线/开房/所在集会所代码。单向添加即好友请求，
+  可接受或拒绝；拒绝在本次游戏运行内不再提示。`[Multiplayer] FriendRequests`、`FriendOnlineNotices`、
+  `FriendHubNotices` 控制请求与提示。集会所内 v4 客户端还会用 `F_AUX 0xE9` 交换好友代码与猎人名。
+- **HUBS4（应答 21）**：列出每个 hub 的链路版本与代码；v3 客户端仍收到旧 `HUBS`。
+- **链接池**：服务器把 3 与 4 放在同一池中互相可见（`-link-pool 3-4`，可设 `off`），v4 客户端看到每个
+  hub 的版本并向下兼容。`-min-proto` / `-max-proto` 可淘汰旧版本或拒绝更新的版本，二者均可在运行时修改。
+
+`mhgu-hub` 额外支持：
+
+- `-min-proto N` / `-max-proto N`：拒绝更旧/更新的链路协议（默认 0 = 不限 / 100）；
+- `-link-pool LOW-HIGH`：互通版本区间（默认 `3-4`；`off` 各自独立）；
+- `-max-presence N`：好友在线表人数上限（默认 20000）；
+- `-presence-ttl SECS`：好友最后一次 PRESENCE 后保持在线的时间（默认 90 秒）；到期会向联邦 peer 广播下线。
+- `-separate-phones[=false]`：`false` 时 Android 的公共房间与 PC 公共房间合并（游戏默认不再区分）；
+- `-settings FILE`：从文件读取 `min-proto`、`max-proto`、`link-pool`、`separate-phones`；启动时文件值覆盖命令行，SIGHUP 重新读取并热应用，不踢房间；systemd 可配 `ExecReload=/bin/kill -HUP $MAINPID`。
 - `-v`：记录 hub、加入与因协议被拒的请求（不记录 IP）。
+
+### 服务器联邦（多台 hub 服务器）
+
+多台 `mhgu-hub` 可以互相共享集会所：玩家仍连自己的服务器，搜索里会出现对端服务器的 hub，加入由本服代理，
+不需要玩家切换 `Server`。配置两端互填：
+
+```sh
+mhgu-hub -federation-token 'b-token' -federation-name hub-b                 # B
+mhgu-hub -federation-token 'a-token' -federate 'hub-b:39510,b-token,B'     # A（B 的 token）
+```
+
+实际部署用 Ed25519 身份与允许列表：
+
+```sh
+# B：接受 A 的身份
+mhgu-hub -identity /var/lib/mhgu-hub/id -advertise hub-b.example:39510 \
+         -federation-allow 'ed25519:ABCDEFGH12345678' -web :39511
+# A：由 well-known 自动发现 B，或直接写地址+id
+mhgu-hub -identity /var/lib/mhgu-hub/id \
+         -federate 'http://hub-b.example:39511'
+```
+
+只联邦显式批准的对端；默认只列直连 peer 的 hub，`-federation-transitive N` 可让广告、代码 FIND 与加入沿最多 N 条额外
+peer 转发。跨服链路固定走中继（不做 P2P），每多一跳多一次转发且两边各计流量。协议不加密，公网请套
+WireGuard/VPN。`-discover lan` 只把验证过的局域网服务器列入候选表，不会自动并入。握手（Ed25519 / 兼容
+共享 token）、well-known、候选嗅探、好友在线状态（含传递同步）、缓存、UDP 前缀翻译、Web Peers 页与限制见
+[docs/FEDERATION.md](FEDERATION.md)。
+
 
 ### Direct（P2P 直连）
 
@@ -72,7 +121,7 @@ Key 是**客户端**的概念：客户端把 `Key` 算成 16 字节房间
 `SHA-256("MHGURecomp matchmaking key:" + Key)[0..16]`（空 Key = 全零的公共房间），放进每个请求的头部；
 服务器只比较这 16 字节，**永远看不到 Key 本身**，因此：
 
-- 客户端侧指定 Key：C 版/gu-native 在设置里填 `Key`（F1 覆盖层 / `[Multiplayer] Key`）；
+- 客户端侧指定 Key：在设置里填 `Key`（F1 覆盖层 / `[Multiplayer] Key`）；
   Rust FFI 是 `mhgu_ldn_host_server(server, key)` 与 `mhgu_lobby_*(…, key)` 的 `key` 参数；
 - 服务器侧限定房间：`mhgu-hub -key <同一个 Key>`。此时只有该 Key 的房间被服务，
   公共房间（空 Key）与其他 Key 的 HOST/JOIN 得到与「房间不存在」完全相同的 `T_ERROR(1)`，
@@ -92,8 +141,8 @@ Key 是**客户端**的概念：客户端把 `Key` 算成 16 字节房间
 
 `mhgu-hub` 自带一个无依赖的 Web 界面（`-web :39511`，默认开；`off` 关闭）：
 
-- `GET /`：公开页，列「房间 1、房间 2 …」、人数、访问类型（公开 / 仅手机 / Key 房间，不显示内部 id / key 哈希）及可加入状态，另有总人数/连接数/运行时长，5 秒自动刷新；
-- `GET /api/hubs`：同样的 JSON，带 `locked` 和 `access`（`public` / `phone` / `key`）；
+- `GET /`：公开页，列房间名、玩家名、任务、密码、人数、访问类型（公开 / 仅手机 / Key 房间，不显示内部 id / key 哈希）及可加入状态，另有总人数/连接数/运行时长，5 秒自动刷新；猎人搜索不算房间，单独列在下方表格；
+- `GET /api/hubs`：`hubs` 只含房间，猎人搜索在单独的 `hunter_searches` 数组；两项的条目都带 `locked`、`access`（`public` / `phone` / `key`）、`room_name`、`names`、`count`/`max`、`quest_id`/`quest_name`/`quest_goal`/`quest_rank`/`quest_stars`，以及 `quest_name_es`/`quest_name_zh`、`quest_goal_es`/`quest_goal_zh`、`in_quest`、`quest_age`（已出发秒数，不在任务中为 `null`）、`passcode`（无密码为 `null`）、`hunter_search`；`in_quest=false` 时页面显示「房间空闲」，`quest_id`/`in_quest`/`quest_age` 随主机的 UPDATE 实时刷新；
 - `GET /admin?token=…`：管理员页：统计、每个 hub 的 `Close`（`POST /admin/close`，会通知主机并踢掉该房间）、
   IP 封禁（`POST /admin/ban` / `unban`，被禁 IP 的连接立即被重置）、`/admin/log` 看最近 300 条事件；
 - 界面多语言：右上角 🌐 点开是语言列表（English / 中文 / Español），点击即切换；选择写进
@@ -102,6 +151,8 @@ Key 是**客户端**的概念：客户端把 `Key` 算成 16 字节房间
 - 后台有 **Players** 表（每个已拼接连路的 pair、所属房间、玩家 IP、`↓/↑` 平均速率、`live`/`idle Ns`）与 `Kick`（`POST /admin/kick pair=…`，
   关掉该玩家两侧的 socket，pipe 线程结束、`joins` 递减）；日志可按 `?only=hubs|admin` 过滤；
 - 令牌来自 `-web-token`，不填则启动时随机生成并打印。
+
+房间名、最多四个猎人名、任务 ID、是否任务中、密码和猎人搜索标志来自游戏的 `NetworkInfo` advertise 块；任务名称/目标/等级/星数由 `crates/mhgu-hub/data/quests.json` 映射，英文/西班牙文/中文分别来自 APK 的 `name`/`goal`、`name_es`/`goal_es`、`name_zh`/`goal_zh`。等级是任务等级，不是玩家等级；同名任务可能有不同 ID（例如「雪山之主」的 LR 10216 与 HR 10530）。数据库没有的占位/模组任务显示「未知任务 #ID」，不会伪造名称。该 JSON 由 `tools/extract_mhgudb_quests.py` 从 MHGU Database 2.4.5 的 `quests` 表提取，只保留显示所需元数据，不含 APK 或完整数据库。
 
 ### 热设置（WebUI，无需重启）
 
@@ -119,14 +170,14 @@ Key 是**客户端**的概念：客户端把 `Key` 算成 16 字节房间
 | `Bandwidth (bytes/s)` | 每条 pair 每方向带宽 | 新建 pair；已有 pair 保持原值 |
 
 非法值（非数字、0 上限、list > 64、带宽 < 1）整次拒绝，服务器保持原设置。
-修改会写入管理员日志；所有设置也可用启动参数指定，WebUI 只负责运行中修改。
+修改会写入管理员日志；所有设置也可用启动参数指定，WebUI 只负责**本次进程**的运行中修改——重启后回到启动参数/默认值。需要长期保存的请写进 systemd 启动参数或 `-settings FILE`；`-settings` 的四个热设置可由 SIGHUP 重新加载。
 
 ```sh
 ./target/release/mhgu-hub -addr :39510 -web :39511 -web-token <你的令牌> -key <房间 Key>
 ```
 
-两条路径都由 `mhgu-link-ffi` 实现，与 C 版/gu-native 客户端双向兼容（LAN 直连、`MHGD` 数据报、
-经服务器的 `MHGR` 中继都已验证）。
+两条路径都由 `mhgu-link-ffi` 实现，只以 **MHGURecomp** 为联机兼容目标（LAN 直连、`MHGD` 数据报、
+经服务器的 `MHGR` 中继都已验证）。gu-native 没有跟进 Recomp 的协议更新，不再列入兼容列表。
 
 ## 菜单汉化 / 字体
 

@@ -6,7 +6,7 @@
 //! `Packet` (a `VPacket` header + the game's bytes) and `Aux` (port-private messages) frames.
 //!
 //! The wire format is byte-for-byte ldn.c's, so a Rust client interoperates with MHGURecomp and
-//! gu-native peers on LAN or through a hub server relay.
+//! MHGURecomp peers on LAN or through a hub server relay; gu-native is not a supported target.
 
 pub mod client;
 pub mod hello;
@@ -18,7 +18,7 @@ pub mod vpacket;
 
 pub use client::{Client, Event, Reply};
 pub use hello::Hello;
-pub use lobby::{room_from_key, HostSession, HubEntry, Lobby, Spliced};
+pub use lobby::{room_from_key, error_code, FriendOnline, FriendRequest, Friends, HostSession, HubEntry, Lobby, ServerError, Spliced};
 pub use scan::ScanReply;
 pub use vpacket::VPacket;
 

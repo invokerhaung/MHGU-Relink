@@ -14,7 +14,8 @@ Ryujinx / suyu 模拟器互通。
 |---|---|
 | [docs/pc.md](docs/pc.md) | PC 版安装、控制、设置、模组、从源码构建 |
 | [docs/android.md](docs/android.md) | Android 安装、游戏文件、存档导入导出、排错 |
-| [docs/online.md](docs/online.md) | 局域网、hub 服务器、Ryujinx / suyu Crossplay、混合 hub |
+| [docs/online.md](docs/online.md) | 局域网、hub 服务器、联邦、Ryujinx / suyu Crossplay、混合 hub |
+| [docs/FEDERATION.md](docs/FEDERATION.md) | Hub 服务器联邦：配置、MHGF 协议、代理加入与 UDP 桥、限制 |
 | [docs/CROSSPLAY-zh-CN.md](docs/CROSSPLAY-zh-CN.md) | Crossplay 选项与端口速查 |
 | [docs/HDR.md](docs/HDR.md) | 原生 HDR 输出与 HDR 分析 |
 | [docs/MODS-zh-CN.md](docs/MODS-zh-CN.md) | Android 模组导入格式与兼容范围 |
@@ -27,7 +28,7 @@ Ryujinx / suyu 模拟器互通。
 |---|---|
 | `runtime/` | 共享 C 运行时：guest 内核/`svc`、HLE、NVN→Vulkan、音频、媒体库、设置菜单、`net/ldn.c` |
 | `tools/` | 游戏翻译器（`gen.py`、`lifter.py`、`neon.py`、`nso.py`）、`build_game.py`（Android）、`build_game_windows.py`（Windows DLL） |
-| `crates/mhgu-link*` | Rust 联机核心：协议、link 客户端、C FFI、hub 服务器 |
+| `crates/mhgu-link*` | Rust 联机核心：协议、link 客户端、C FFI、hub 服务器；联机兼容目标为 MHGURecomp |
 | `crates/mhgu-crossplay` | RyuLdn 客户端/服务器、suyu 房间客户端/服务器、混合 hub、C FFI |
 | `crates/mhgu-hub` | 互联网 hub 服务器 + 无依赖 Web UI |
 | `native/`、`android/` | Android CMake/NDK 构建与 Gradle 工程 |
@@ -68,6 +69,8 @@ Android APK 不包含游戏代码。安装后请在所选游戏文件夹中提�
 ## 联机
 
 - **局域网 / 互联网 hub**：游戏内创建或搜索本地通信房间；hub 服务器用 `target/release/mhgu-hub`。
+  联机兼容目标只有 **MHGURecomp**（链路协议 v3/v4）；gu-native 未跟进协议更新，不在支持列表。
+  只服务 Recomp 时建议 hub 加 `-min-proto 3`。
 - **模拟器 Crossplay**：设置菜单选择 `Crossplay = Ryujinx / Room / Mixed`，连接 RyuLdn 服务器、suyu 房间服务器，
   或两者同时使用。详见 [docs/online.md](docs/online.md#crossplayryujinx--suyu)。
 - 公共测试服务器：`114.66.25.224`（RyuLdn `30456/tcp`，suyu 房间 `24872/udp`，hub `39510/tcp`）。

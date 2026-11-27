@@ -8,6 +8,7 @@
 
 #include "hle.h"
 #include "kernel.h"
+#include "pause.h"
 
 // ------------------------------------------------------------------ results
 #define R_OK_ 0
@@ -79,7 +80,7 @@ uint64_t rt_ticks(void) {  // 19.2 MHz system tick
     // (it runs on while the app is paused in the background: a clock held for the game's frame step left every other
     // guest thread's timed waits against a stopped clock; the engine caps a frame's step, so the first frame after a
     // pause moves at most a quarter second)
-    uint64_t ns = plat_now_ns();  // (ns * 12 / 625 without a 128-bit division: called all the time)
+    uint64_t ns = pause_clock_ns();  // (stopped while paused: runtime/pause.h. ns * 12 / 625 without a 128-bit division)
     return ns / 625 * 12 + ns % 625 * 12 / 625;
 }
 
@@ -308,7 +309,10 @@ static uint32_t block_current(int64_t timeout_ns) {
     while (t->wait_kind != WAIT_NONE) {
         if (g_rt_unwind) { t->wait_kind = WAIT_NONE; t->wait_result = R_CANCELLED; break; }
         if (t->cancel) { t->cancel = false; t->wait_kind = WAIT_NONE; t->wait_result = R_CANCELLED; break; }
-        if (!kwait(timeout_ns, &ts)) { t->wait_kind = WAIT_NONE; t->wait_result = R_TIMEOUT; break; }
+        // A wake that lands as the deadline passes can still report a timeout: if a waker already ended the wait (a
+        // signalled condvar handing over its mutex, a mutex handoff), keep its result. Reporting a timeout there made
+        // nn::os re-take a mutex the thread had just been given: it waited on its own handle forever (hub hangs).
+        if (!kwait(timeout_ns, &ts) && t->wait_kind != WAIT_NONE) { t->wait_kind = WAIT_NONE; t->wait_result = R_TIMEOUT; break; }
     }
     waitlist_remove(t);
     return t->wait_result;

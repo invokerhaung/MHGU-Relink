@@ -18,8 +18,11 @@
 #define B_A        0x2000u
 #define ST_SEND    4u       // the grid that sends to the box
 #define ST_MENU    2u       // the menu, where "Send to the Item Box" is chosen
-#define SELECT_NS  100000000ull  // A held this long: the cursor goes to the next item (a tap is shorter)
-#define INITIAL_NS 350000000ull  // from the press to the second item's send (a key's first delay)
+// A held this long: the cursor goes to the next item. A tap must stay well under it: at 100 ms an ordinary tap on a
+// controller (often 100-150 ms, and the game samples A once an update) moved the cursor on after its send, so the next
+// d-pad press seemed to skip a slot (issue #386)
+#define SELECT_NS  300000000ull
+#define INITIAL_NS 500000000ull  // from the press to the second item's send (a key's first delay)
 #define REPEAT_NS  70000000ull   // between the sends after it
 
 static uint64_t g_a_since, g_next_ns;  // A went down in the grid (0: not held); the next send's time
